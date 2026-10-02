@@ -26,6 +26,7 @@ def _rule_list(value: str) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser. Options left unset default to None so config can fill them."""
     parser = argparse.ArgumentParser(
         prog="slopfence",
         description="Find the junk AI coding assistants leave behind.",
@@ -38,7 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--format", choices=["text", "json", "sarif"], default="text")
     parser.add_argument("-o", "--output", type=Path, help="write the report to a file")
-    parser.add_argument("--offline", action="store_true", help="skip PyPI lookups (SLOP001)")
+    parser.add_argument(
+        "--offline", action="store_true", help="make no network requests (disables SLOP001)"
+    )
     parser.add_argument(
         "--select", type=_rule_list, help="comma-separated rules to run (overrides config)"
     )
@@ -55,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=lambda v: [p.strip() for p in v.split(",") if p.strip()],
         help="comma-separated private package names or globs that SLOP001 must accept "
         "(overrides config)",
+    )
+    parser.add_argument(
+        "--check-imports",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="also look up unknown imports in source code on PyPI; this sends their names to "
+        "pypi.org (default: off, only dependency files are checked; --no-check-imports "
+        "overrides config)",
     )
     parser.add_argument(
         "--fail-on",
@@ -87,6 +98,7 @@ def _use_utf8_output() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run slopfence from the command line and return the exit code (0 ok, 1 issues, 2 error)."""
     _use_utf8_output()
     args = build_parser().parse_args(argv)
 
@@ -119,6 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     known_packages = (
         args.known_packages if args.known_packages is not None else config.known_packages
     )
+    check_imports = args.check_imports if args.check_imports is not None else config.check_imports
     fail_on = Severity(args.fail_on or config.fail_on)
     strict = args.strict if args.strict is not None else config.strict
 
@@ -140,6 +153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         changed=changed,
         exclude=exclude,
         known_packages=known_packages,
+        check_imports=check_imports,
     )
     if isinstance(registry, PyPIRegistry):
         registry.save()

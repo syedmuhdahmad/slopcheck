@@ -1,3 +1,5 @@
+import pytest
+
 from slopfence.detectors.packages import parse_dependency_file
 from tests.conftest import FakeRegistry, rule_lines
 
@@ -64,6 +66,7 @@ def test_poetry_dependencies(tmp_path, write):
 
 
 def test_hallucinated_import_flagged(write, check):
+    """An import of a package missing from PyPI is reported; stdlib and local ones aren't."""
     write(
         "src/app.py",
         """
@@ -79,7 +82,7 @@ def test_hallucinated_import_flagged(write, check):
     )
     write("src/utils.py", "")
     registry = FakeRegistry(set())
-    result = check("SLOP001", registry=registry)
+    result = check("SLOP001", registry=registry, check_imports=True)
     # Every occurrence is reported, so --diff and ignores work per line.
     assert rule_lines(result, "SLOP001") == [7, 8]
     # stdlib, local modules and known aliases are never looked up.
@@ -87,21 +90,35 @@ def test_hallucinated_import_flagged(write, check):
 
 
 def test_installed_and_declared_imports_not_flagged(write, check):
+    """Installed and declared packages are trusted without asking PyPI about the import."""
     write("requirements.txt", "my-declared-lib\n")
     write("src/app.py", "import pytest\nimport my_declared_lib\n")
     registry = FakeRegistry({"my-declared-lib"})
-    assert check("SLOP001", registry=registry).findings == []
+    assert check("SLOP001", registry=registry, check_imports=True).findings == []
     assert "pytest" not in registry.queries
 
 
 def test_unreachable_registry_never_flags(write, check):
+    """If PyPI can't be reached, nothing is reported as missing."""
+
     class Down:
         def exists(self, name):
             return None
 
     write("requirements.txt", "anything-at-all\n")
     write("src/app.py", "import nonexistent_xyz\n")
-    assert check("SLOP001", registry=Down()).findings == []
+    assert check("SLOP001", registry=Down(), check_imports=True).findings == []
+
+
+def test_imports_are_not_looked_up_by_default(write, check):
+    """Only dependency files are checked by default: sending import names to PyPI
+    can leak private package names, so import lookups are opt-in (#34)."""
+    write("requirements.txt", "ghost-dep\n")
+    write("src/app.py", "import corp_secret_auth\n")
+    registry = FakeRegistry(set())
+    result = check("SLOP001", registry=registry)
+    assert [(f.path, f.line) for f in result.findings] == [("requirements.txt", 1)]
+    assert registry.queries == ["ghost-dep"]
 
 
 def test_offline_skips_lookups(write, check):
@@ -111,6 +128,7 @@ def test_offline_skips_lookups(write, check):
 
 
 def test_single_file_still_knows_project_modules(write, tmp_path):
+    """Checking one file still resolves the project's own modules and dependencies."""
     from slopfence.engine import run
 
     write("requirements.txt", "my-internal-dep\n")
@@ -118,7 +136,7 @@ def test_single_file_still_knows_project_modules(write, tmp_path):
     write("src/mypkg/core.py", "")
     app = write("src/app.py", "import mypkg.core\nimport my_internal_dep\nimport invented_pkg_zz\n")
     registry = FakeRegistry({"my-internal-dep"})
-    result = run([app], tmp_path, registry, select=["SLOP001"])
+    result = run([app], tmp_path, registry, select=["SLOP001"], check_imports=True)
     assert rule_lines(result, "SLOP001") == [3]
     assert set(registry.queries) == {"invented_pkg_zz", "invented-pkg-zz"}
 
@@ -143,6 +161,7 @@ def test_requirements_ignore_file(write, check):
 
 
 def test_ignored_and_external_requirements_stay_declared(write, check):
+    """Ignored and non-PyPI requirements still count as declared for imports."""
     write(
         "requirements.txt",
         """
@@ -153,13 +172,78 @@ def test_ignored_and_external_requirements_stay_declared(write, check):
     )
     write("src/app.py", "import internal_lib\nimport internal_client\nimport git_thing\n")
     registry = FakeRegistry(set())
-    assert check("SLOP001", registry=registry).findings == []
+    assert check("SLOP001", registry=registry, check_imports=True).findings == []
     assert registry.queries == []  # none of them are looked up on PyPI
 
 
 def test_private_index_skips_validation(write, check):
     write("requirements.txt", "--extra-index-url https://pkgs.example.com/simple\ncorp-lib\n")
     assert check("SLOP001", registry=FakeRegistry(set())).findings == []
+
+
+@pytest.mark.parametrize(
+    ("config", "private"),
+    [
+        ('[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n', True),
+        (
+            '[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            'priority = "supplemental"\n',
+            True,
+        ),
+        # Explicit sources only serve dependencies that name them (checked per dependency).
+        (
+            '[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            'priority = "explicit"\n',
+            False,
+        ),
+        ('[[tool.poetry.source]]\nname = "mirror"\nurl = "https://pypi.org/simple"\n', False),
+        ('[[tool.uv.index]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n', True),
+        (
+            '[[tool.uv.index]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            "explicit = true\n",
+            False,
+        ),
+        ('[tool.uv]\nextra-index-url = ["https://pkgs.corp.example/simple"]\n', True),
+        ('[tool.uv]\nindex-url = "https://pypi.org/simple"\n', False),
+        # Matched by host, so a private URL that merely contains "pypi.org" stays private.
+        ('[[tool.uv.index]]\nname = "corp"\nurl = "https://pypi.org.corp.example/simple"\n', True),
+        ('[[tool.poetry.source]]\nname = "corp"\nurl = "https://corp.example/pypi.org/"\n', True),
+    ],
+)
+def test_project_wide_private_index(tmp_path, write, config, private):
+    """A project-wide private Poetry or uv index means names missing from PyPI may be
+    private, so no dependency in that file is looked up on PyPI."""
+    write(
+        "pyproject.toml",
+        '[project]\nname = "demo"\ndependencies = ["corp-auth"]\n\n'
+        '[tool.poetry.dependencies]\ncorp-billing = "^1"\n\n' + config,
+    )
+    deps = parse_dependency_file(tmp_path / "pyproject.toml", tmp_path)
+    assert {d.name: d.validate for d in deps} == {
+        "corp-auth": not private,
+        "corp-billing": not private,
+    }
+
+
+@pytest.mark.parametrize(
+    ("option", "private"),
+    [
+        ("--index-url https://pypi.org/simple", False),
+        ("-i https://pypi.org/simple", False),
+        ("--extra-index-url=https://files.pythonhosted.org/simple", False),
+        ("--extra-index-url https://pkgs.corp.example/simple", True),
+        ("--index-url https://corp.example/pypi.org/simple", True),
+        ("-i https://pypi.org.corp.example/simple  # mirror", True),
+    ],
+)
+def test_requirements_index_matched_by_host(write, check, option, private):
+    """Only PyPI's own hosts count as public; a URL that merely contains "pypi.org"
+    is a private index, so its packages are neither reported nor looked up."""
+    write("requirements.txt", f"{option}\ncorp-lib\n")
+    registry = FakeRegistry(set())
+    result = check("SLOP001", registry=registry)
+    assert registry.queries == ([] if private else ["corp-lib"])
+    assert rule_lines(result, "SLOP001") == ([] if private else [2])
 
 
 def test_pyproject_line_is_the_dependency_entry(write, check):
@@ -206,6 +290,7 @@ def test_pyproject_external_sources(tmp_path, write):
 
 
 def test_every_import_occurrence_reported(write, check):
+    """Each import of a missing package is reported on its own line."""
     write(
         "src/app.py",
         """
@@ -213,7 +298,7 @@ def test_every_import_occurrence_reported(write, check):
         import ghostpkg_q
         """,
     )
-    result = check("SLOP001", registry=FakeRegistry(set()))
+    result = check("SLOP001", registry=FakeRegistry(set()), check_imports=True)
     # The ignored first occurrence must not hide the second one.
     assert rule_lines(result, "SLOP001") == [2]
 

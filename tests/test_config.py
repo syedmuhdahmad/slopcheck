@@ -127,11 +127,17 @@ def test_is_excluded(path, patterns, excluded):
 
 
 def test_excluded_modules_still_count_as_local(write, tmp_path):
+    """Excluded files aren't checked, but importing them isn't a missing package."""
     from slopfence.engine import run
 
     write("src/app.py", "import generated_client_zz\n")
     write("src/generated_client_zz/__init__.py", "")
     result = run(
-        [tmp_path], tmp_path, FakeRegistry(set()), select=["SLOP001"], exclude=["generated_*"]
+        [tmp_path],
+        tmp_path,
+        FakeRegistry(set()),
+        select=["SLOP001"],
+        exclude=["generated_*"],
+        check_imports=True,
     )
     assert rule_lines(result, "SLOP001") == []

@@ -12,7 +12,7 @@
 
 **A fast, deterministic quality gate for AI-assisted code.**
 
-slopfence finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers) before it gets merged.
+slopfence finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs and leftover chat text) before it gets merged.
 
 ![slopfence checking an AI-written billing service: it finds a dependency that doesn't exist on PyPI, a placeholder comment, leftover "Certainly!" chat text, and three tests that can't fail](https://raw.githubusercontent.com/syedmuhdahmad/slopfence/main/docs/demo.gif)
 
@@ -52,7 +52,8 @@ slopfence --diff main
 | `--diff REF` | Only report issues on lines changed since `REF` (plus new untracked files) |
 | `--format text\|json\|sarif` | Output format. SARIF shows findings inline on GitHub pull requests |
 | `-o, --output FILE` | Write the report to a file |
-| `--offline` | Skip PyPI lookups (disables `SLOP001`) |
+| `--offline` | Make no network requests (disables `SLOP001`) |
+| `--check-imports` / `--no-check-imports` | Also look up unknown imports in your source code on PyPI. Off by default, because it sends those names to pypi.org (see [What slopfence sends over the network](#what-slopfence-sends-over-the-network)) |
 | `--select` / `--ignore` | Comma-separated rule IDs to run or skip, e.g. `--ignore SLOP051` |
 | `--exclude` | Comma-separated paths or globs to skip, e.g. `--exclude migrations,*_pb2.py` |
 | `--known-packages` | Comma-separated private package names or globs that `SLOP001` must accept, e.g. `--known-packages corp-*` |
@@ -75,13 +76,14 @@ select = ["SLOP001", "SLOP010", "SLOP020"]  # rules to run (default: all)
 ignore = ["SLOP051"]                         # rules to skip
 exclude = ["migrations", "tests/fixtures/", "*_pb2.py"]
 known-packages = ["corp-auth", "corp-*"]    # private packages that aren't on PyPI
+check-imports = false                        # true also looks up imports on PyPI (default: false)
 fail-on = "high"                             # only high-severity issues fail the run
 strict = true                                # unparseable files are an error
 ```
 
 `exclude` works like `.gitignore`: a pattern without a `/` in the middle matches any file or folder name anywhere (`migrations`, `*_pb2.py`), and a pattern with one is relative to the project root (`tests/fixtures/`). Excluded files are never checked, but imports of excluded modules still count as your own code.
 
-Command-line options (`--select`, `--ignore`, `--exclude`, `--known-packages`, `--fail-on`, `--strict`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
+Command-line options (`--select`, `--ignore`, `--exclude`, `--known-packages`, `--check-imports`, `--fail-on`, `--strict`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
 
 ### Ignoring a finding
 
@@ -95,6 +97,19 @@ Put `# slopfence: ignore-file` anywhere in a file to skip it. In `requirements.t
 **Private packages:** if your project uses internal packages that aren't on PyPI, list them once in `known-packages` instead of adding ignore comments everywhere. Names are matched case-insensitively with `-`, `_` and `.` treated alike (so `corp_auth` matches `corp-auth`), and `*` globs work. Known packages are never looked up on PyPI, and imports of them are never flagged.
 
 `SLOP010` (placeholders) also skips test code and demo or example code: files under `demo/`, `examples/` or `samples/` folders, or named like `demo.py` or `auth_example.py`.
+
+### What slopfence sends over the network
+
+slopfence only talks to one server, `https://pypi.org`, and only for `SLOP001`. It sends a request per package name (`HEAD https://pypi.org/pypi/<name>/json`) and nothing else: no code, no file names, no telemetry.
+
+| Names sent to PyPI | When |
+|---|---|
+| Dependencies declared in `requirements*.txt` and `pyproject.toml` | By default. These names are already meant for a package index. Entries installed from URLs, paths or git are never sent. Neither is any dependency in a file that uses a private index: `--index-url` / `--extra-index-url` in a requirements file, a `[[tool.poetry.source]]` or `[[tool.uv.index]]` that isn't PyPI (unless it's `explicit`, which only affects the dependencies that name it), or a per-dependency Poetry `source` or `[tool.uv.sources]` entry |
+| Imports in your source code that aren't stdlib, installed, declared or part of your project | **Only with `--check-imports`** (or `check-imports = true`). This can catch an invented package that was imported but never declared, but for private code it may reveal internal package names |
+
+Index settings outside your project files (`pip.conf`, `uv.toml`, `PIP_INDEX_URL` and similar) aren't read yet ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17)). If you install private packages that way, list them in `known-packages` or use `--offline`.
+
+Names in `known-packages` are never sent. Answers are cached for a day (missing) or a week (found) in `~/.cache/slopfence`, so repeated runs send fewer requests. `--offline` sends nothing at all.
 
 ### GitHub Action
 
@@ -192,12 +207,12 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopfen
 
 | ID | Detector | Severity | Status |
 |---|---|---|---|
-| `SLOP001` | Import of a package that doesn't exist on PyPI / npm | 🔴 High | ✅ v0.1 (Python) |
+| `SLOP001` | Dependency (or, with `--check-imports`, import) of a package that doesn't exist on PyPI | 🔴 High | ✅ v0.1 (Python) |
 | `SLOP002` | Dependency that is very new or has suspiciously few downloads (slopsquatting risk) | 🔴 High | Planned |
 | `SLOP010` | Placeholder / stub comment (`In a real implementation…`, `Simplified for demo`) | 🟠 Medium | ✅ v0.1 |
 | `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium | Planned for v0.2 ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22)) |
 | `SLOP020` | Test that only asserts on its own mocks | 🔴 High | ✅ v0.1 |
-| `SLOP021` | Test with no meaningful assertion (`assert True`, `toBeDefined()` only) | 🟠 Medium | ✅ v0.1 |
+| `SLOP021` | Test with no meaningful assertion (e.g. only `assert True`) | 🟠 Medium | ✅ v0.1 |
 | `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High | ✅ v0.1 |
 | `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium | Planned for v0.2 ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11)) |
 | `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low | Planned for v0.2 ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21)) |
@@ -208,16 +223,17 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopfen
 
 ```text
 $ slopfence --diff main
+requirements.txt
+  2:1      SLOP001  Dependency 'flask-jwt-simple-auth' does not exist on PyPI (possible hallucination)  [high]
 
 src/auth.py
-  12:1   SLOP001  Package 'flask-jwt-simple-auth' not found on PyPI (possible hallucination)  🔴
-  48:5   SLOP010  Placeholder: "In a real implementation, validate the token"            🟠
-
-tests/test_user.py
-  20:5   SLOP020  Test only asserts on its own Mock - doesn't test real code               🔴
+  5:5      SLOP010  Placeholder left in code: "In a real implementation, validate the token signature."  [medium]
 
 tests/test_billing.py
-  31:5   SLOP022  Test 'test_refund' catches assertion failures without re-raising, so it can never fail  🔴
+  7:5      SLOP022  Test 'test_refund' catches assertion failures without re-raising, so it can never fail  [high]
+
+tests/test_user.py
+  4:1      SLOP020  Test 'test_user_name' only asserts on its own mocks and never calls real code  [high]
 
 4 issues (3 high, 1 medium)
 ```
@@ -240,8 +256,8 @@ tests/test_billing.py
 ```
 
 - **Parser:** v0.1 uses Python's built-in `ast` and `tokenize` (no dependencies). **tree-sitter** is planned so new languages can be added without rewriting the detectors.
-- **Registry lookups** are cached locally (`~/.cache/slopfence`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing".
-- **Optional LLM mode** sends only the unclear cases for a second opinion. Never required.
+- **Registry lookups** are cached locally (`~/.cache/slopfence`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing". Import names are only sent with `--check-imports` (see [What slopfence sends over the network](#what-slopfence-sends-over-the-network)).
+- **Optional LLM mode** (planned, not built yet) would send only the unclear cases for a second opinion. Never required.
 
 ## Challenges (and how we plan to handle them)
 
@@ -276,20 +292,22 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 
 #### Planned features
 
-- [ ] Config file: `[tool.slopfence]` in `pyproject.toml` ([#10](https://github.com/syedmuhdahmad/slopfence/issues/10))
+- [x] Config file: `[tool.slopfence]` in `pyproject.toml` ([#10](https://github.com/syedmuhdahmad/slopfence/issues/10))
 - [ ] `SLOP030` near-duplicate functions ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
 - [ ] Parallel processing for large repos ([#12](https://github.com/syedmuhdahmad/slopfence/issues/12))
 
 #### Reliability
 
-- [ ] Test the GitHub Action in a real workflow, including SARIF upload ([#13](https://github.com/syedmuhdahmad/slopfence/issues/13))
-- [ ] Test the pre-commit hook with `pre-commit` ([#14](https://github.com/syedmuhdahmad/slopfence/issues/14))
-- [ ] Allowlist for private packages ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
+- [x] Test the GitHub Action in a real workflow, including SARIF upload ([#13](https://github.com/syedmuhdahmad/slopfence/issues/13))
+- [x] Test the pre-commit hook with `pre-commit` ([#14](https://github.com/syedmuhdahmad/slopfence/issues/14))
+- [x] Allowlist for private packages ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
 - [ ] Better import-name to package-name mapping ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
 - [ ] Detect private indexes from `pip.conf`, uv and Poetry ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
-- [ ] `--fail-on` severity threshold ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
-- [ ] Option to fail on unparseable files ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
-- [ ] Fewer `SLOP010` false positives from "for demo purposes" ([#20](https://github.com/syedmuhdahmad/slopfence/issues/20))
+- [x] `--fail-on` severity threshold ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
+- [x] Option to fail on unparseable files ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
+- [x] Fewer `SLOP010` false positives from "for demo purposes" ([#20](https://github.com/syedmuhdahmad/slopfence/issues/20))
+- [x] Import lookups are opt-in, so private package names aren't sent to PyPI ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+- [x] Smaller source distribution ([#35](https://github.com/syedmuhdahmad/slopfence/issues/35))
 
 #### New rules
 
@@ -299,7 +317,7 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 
 #### Project
 
-- [ ] Demo GIF in the README ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
+- [x] Demo GIF in the README ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
 - [ ] Release v0.2.0 ([#25](https://github.com/syedmuhdahmad/slopfence/issues/25))
 
 ### Later

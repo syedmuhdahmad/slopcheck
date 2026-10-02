@@ -46,6 +46,11 @@ Source = "https://github.com/syedmuhdahmad/slopfence"
 [tool.hatch.version]
 path = "src/slopfence/__init__.py"
 
+# Keep the sdist to what's needed to build and test the package: no demo GIF, logos
+# or CI fixtures (the fixture's fake requirements.txt could confuse sdist scanners).
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/pyproject.toml", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/slopfence"]
 

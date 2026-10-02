@@ -91,7 +91,14 @@ def run(
     changed: diffmod.ChangedLines | None = None,
     exclude: Sequence[str] = (),
     known_packages: Sequence[str] = (),
+    check_imports: bool = False,
 ) -> Result:
+    """Check the given paths and return the findings.
+
+    SLOP001 always checks dependency files. Imports in source code are only looked
+    up on PyPI with ``check_imports``, because that sends their names to pypi.org
+    and can reveal private package names.
+    """
     rules = set(select) if select else set(RULES)
     rules -= set(ignore)
     root = root.resolve()
@@ -117,18 +124,19 @@ def run(
                 findings.extend(f for f in detector(src) if not src.is_ignored(f.rule, f.line))
 
     if "SLOP001" in rules:
+        if not check_imports:
+            index = build_index(root, [], dep_files)
         # Index the whole project, not just the checked paths: when pre-commit passes
         # only changed files, imports of the project's other modules must still resolve.
-        if any(Path(p).resolve() == root for p in paths):
-            all_py, all_deps = found_py, found_deps
+        elif any(Path(p).resolve() == root for p in paths):
+            index = build_index(root, found_py, found_deps)
         else:
-            all_py, all_deps = discover([root])
-        checker = PackageChecker(
-            build_index(root, all_py, all_deps), registry, known_packages=known_packages
-        )
+            index = build_index(root, *discover([root]))
+        checker = PackageChecker(index, registry, known_packages=known_packages)
         checked = {_rel_to(p, root) for p in dep_files}
         findings.extend(checker.check_dependencies(only_paths=checked))
-        for src in sources:
+        # Imports are only sent to PyPI when the user opts in (they can reveal private names).
+        for src in sources if check_imports else ():
             if changed is not None and src.rel not in changed:
                 continue  # skip network lookups for files outside the diff
             findings.extend(

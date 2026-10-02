@@ -4,9 +4,11 @@ Two checks:
 
 * Declared dependencies (requirements*.txt, pyproject.toml) are looked up by
   their distribution name. This is the most reliable signal.
-* Imports are only looked up when they are not stdlib, not part of the
-  project, not installed, not a declared dependency and not a well-known
-  import name whose package has a different name (``yaml`` -> ``PyYAML``).
+* Imports in source code are opt-in (``check-imports``), because looking them
+  up sends their names to PyPI and can reveal private package names. Even then
+  they are only looked up when they are not stdlib, not part of the project,
+  not installed, not a declared dependency and not a well-known import name
+  whose package has a different name (``yaml`` -> ``PyYAML``).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import importlib.metadata
 import importlib.util
 import re
 import sys
+import urllib.parse
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,6 +102,7 @@ _REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _EGG = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
 # pip treats "#" as a comment only at line start or after whitespace (URLs contain "#egg=").
 _REQ_COMMENT = re.compile(r"(^|\s)#.*$")
+_INDEX_OPTION = re.compile(r"\s*(?:-i|--index-url|--extra-index-url)(?:\s*=\s*|\s+)(\S+)")
 _TABLE_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 
 
@@ -218,9 +222,7 @@ def _parse_requirements(text: str, rel: str) -> list[Dependency]:
     lines = text.splitlines()
     # With a non-PyPI index, a name missing from PyPI may be a private package.
     private_index = any(
-        re.match(r"\s*(-i|--index-url|--extra-index-url)\b", line)
-        and "pypi.org" not in line
-        and "pythonhosted.org" not in line
+        (m := _INDEX_OPTION.match(_REQ_COMMENT.sub("", line))) and not _is_public_index(m.group(1))
         for line in lines
     )
     deps = []
@@ -326,6 +328,50 @@ class _LineFinder:
         return 0 < line <= len(self.comments) and _suppresses_slop001(self.comments[line - 1])
 
 
+PUBLIC_INDEX_HOSTS = ("pypi.org", "pythonhosted.org")
+
+
+def _is_public_index(url: object) -> bool:
+    """Whether an index URL points at PyPI itself (by host, not substring)."""
+    if not isinstance(url, str):
+        return False
+    try:
+        host = (urllib.parse.urlsplit(url.strip()).hostname or "").lower()
+    except ValueError:
+        return False
+    return any(host == h or host.endswith("." + h) for h in PUBLIC_INDEX_HOSTS)
+
+
+def _uses_private_index(tool: dict) -> bool:
+    """Whether Poetry or uv may install any dependency from a non-PyPI index.
+
+    Then a name that's missing from PyPI may be a private package, so it must
+    neither be reported nor sent to PyPI.
+    """
+    poetry_sources = tool.get("poetry", {}).get("source", [])
+    for source in poetry_sources if isinstance(poetry_sources, list) else []:
+        # Only "explicit" sources are limited to dependencies that name them (handled
+        # per dependency); primary, supplemental and the legacy kinds serve any package.
+        if (
+            isinstance(source, dict)
+            and source.get("priority") != "explicit"
+            and not _is_public_index(source.get("url"))
+        ):
+            return True
+    uv = tool.get("uv", {})
+    indexes = uv.get("index", [])
+    for index in indexes if isinstance(indexes, list) else []:
+        if (
+            isinstance(index, dict)
+            and not index.get("explicit")
+            and not _is_public_index(index.get("url"))
+        ):
+            return True
+    extra = uv.get("extra-index-url", [])
+    urls = [uv.get("index-url"), *(extra if isinstance(extra, list) else [extra])]
+    return any(url is not None and not _is_public_index(url) for url in urls)
+
+
 def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
     try:
         data = tomllib.loads(text)
@@ -335,7 +381,9 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
     deps: list[Dependency] = []
     project = data.get("project", {})
     project_name = normalize(project["name"]) if isinstance(project.get("name"), str) else None
-    uv_sources = {normalize(n) for n in data.get("tool", {}).get("uv", {}).get("sources", {})}
+    tool = data.get("tool", {})
+    uv_sources = {normalize(n) for n in tool.get("uv", {}).get("sources", {})}
+    private_index = _uses_private_index(tool)
 
     def add_spec(table: str, array: str, spec: object) -> None:
         if not isinstance(spec, str) or not (m := _REQ_NAME.match(spec)):
@@ -344,7 +392,7 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
         if normalize(name) == project_name:  # self-references like "pkg[extra]"
             return
         line = finder.spec(table, array, spec)
-        validate = "://" not in spec and normalize(name) not in uv_sources
+        validate = not private_index and "://" not in spec and normalize(name) not in uv_sources
         deps.append(Dependency(name, rel, line, validate, finder.suppressed(line)))
 
     for spec in project.get("dependencies", []):
@@ -362,7 +410,7 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
         for spec in specs:
             add_spec("dependency-groups", group, spec)
 
-    poetry = data.get("tool", {}).get("poetry", {})
+    poetry = tool.get("poetry", {})
     tables = {
         "tool.poetry.dependencies": poetry.get("dependencies", {}),
         "tool.poetry.dev-dependencies": poetry.get("dev-dependencies", {}),
@@ -378,7 +426,8 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
                 isinstance(s, dict) and {"path", "git", "url", "source"} & set(s) for s in specs
             )
             line = finder.key(table, name)
-            deps.append(Dependency(name, rel, line, not external, finder.suppressed(line)))
+            validate = not (external or private_index)
+            deps.append(Dependency(name, rel, line, validate, finder.suppressed(line)))
     return deps
 
 

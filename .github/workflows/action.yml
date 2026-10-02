@@ -1,17 +1,13 @@
 name: GitHub Action
 
 # End-to-end test of action.yml on a throwaway project with known slop.
+# Called by ci.yml, so the required `ci` check fails when this fails.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   action:

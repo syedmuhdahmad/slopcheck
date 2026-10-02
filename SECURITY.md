@@ -47,4 +47,10 @@ Examples of issues we want to hear about:
 - A detector bypass that lets a known-malicious package pass as safe
 - Vulnerabilities in our GitHub Action or release pipeline
 
+## What slopfence sends over the network
+
+`SLOP001` checks package names against `https://pypi.org`. By default only names **declared in dependency files** (`requirements*.txt`, `pyproject.toml`) are sent. Import names from source code, which can reveal private package names, are sent only when you opt in with `--check-imports` or `check-imports = true`. Dependencies are not sent when the file says they may come from a private index (`--index-url` in a requirements file, or a non-PyPI Poetry or uv index in `pyproject.toml`), but index settings outside the project, such as `pip.conf` or `PIP_INDEX_URL`, aren't read yet ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17)). `known-packages` are never sent, and `--offline` sends nothing. See [What slopfence sends over the network](README.md#what-slopfence-sends-over-the-network).
+
+If slopfence sends anything beyond this, please report it as a vulnerability.
+
 Out of scope: detectors that miss a code-quality pattern (please open a normal issue instead).

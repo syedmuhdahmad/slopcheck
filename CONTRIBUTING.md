@@ -42,9 +42,9 @@ New here? Look for issues labelled [`good first issue`](https://github.com/syedm
 
 ### What happens to your pull request
 
-- CI must pass.
-- **Copilot reviews every pull request automatically** and again after each push. The `copilot-review` check waits (up to 25 minutes) until Copilot has reviewed the latest commit, which usually takes 1–15 minutes. If it times out, re-run it once the review appears. Its comments must be resolved like any other review. If Copilot is unavailable, a maintainer can add the `skip-copilot-review` label.
-- At least **one maintainer approval** is required.
+- The `ci` check must pass. It only passes when all of these pass: lint, tests on Linux, macOS and Windows, the package build (the same build and smoke test as a release), and the end-to-end tests of the GitHub Action and the pre-commit hook.
+- **CodeRabbit reviews every pull request** automatically and again after each push, and its findings must be fixed before merging. The required `CodeRabbit` check makes sure it has finished reviewing. It requests changes while it has open comments or a failing pre-merge check (a clear title, the linked issue fully addressed, and docstrings on at least 80% of the functions you touch), and approves once they are resolved. If you think a finding is wrong, reply to it: CodeRabbit answers, and a maintainer decides.
+- A maintainer merges it once the checks pass and review comments are addressed.
 - All review conversations must be resolved.
 - Pull requests are **squash-merged**, so `main` has a clean, linear history with one commit per pull request. The pull request title becomes the commit message, so make it clear.
 - Your branch is deleted automatically after merge.

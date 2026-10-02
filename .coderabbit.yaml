@@ -4,7 +4,10 @@ language: en-US
 
 reviews:
   profile: chill
-  request_changes_workflow: false
+  # CodeRabbit's findings are mandatory: it requests changes when it has comments or
+  # a pre-merge check fails, and approves once they are resolved. The "Protect main"
+  # ruleset requires all review threads to be resolved and the CodeRabbit status.
+  request_changes_workflow: true
   high_level_summary: true
   poem: false
   review_status: true
@@ -12,6 +15,15 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+
+  pre_merge_checks:
+    title:
+      mode: error
+    issue_assessment:
+      mode: error
+    docstrings:
+      mode: error
+      threshold: 80
 
   path_filters:
     # Deliberately sloppy fixtures and generated assets: nothing to review.
