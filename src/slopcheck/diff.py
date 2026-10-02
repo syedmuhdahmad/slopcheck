@@ -19,7 +19,13 @@ class DiffError(RuntimeError):
 def _git(root: Path, *args: str) -> str:
     try:
         result = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, check=True
+            ["git", *args],
+            cwd=root,
+            capture_output=True,
+            check=True,
+            # git emits UTF-8 paths; don't decode with the locale (cp1252 on Windows).
+            encoding="utf-8",
+            errors="surrogateescape",
         )
     except FileNotFoundError as err:
         raise DiffError("git is not installed") from err
