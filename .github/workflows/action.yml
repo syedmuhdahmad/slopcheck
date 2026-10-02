@@ -152,11 +152,14 @@ jobs:
           sys.exit(1 if errors else 0)
           PY
 
-  # Uploads a real SARIF report to code scanning. Runs only on pull requests from
-  # this repository, so alerts attach to the PR rather than to main, and fork PRs
-  # (whose tokens can't write security events) are skipped.
+  # Uploads a real SARIF report to code scanning. It also runs on main so PRs have a
+  # baseline: the fixture's alerts on main are dismissed as "used in tests", so PRs
+  # only show genuinely new findings. Fork PRs are skipped (their tokens can't
+  # write security events).
   sarif-upload:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -212,10 +215,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SARIF_ID: ${{ steps.upload.outputs.sarif-id }}
+          ANALYSIS_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
         run: |
           status=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/sarifs/$SARIF_ID" --jq .processing_status)
           echo "processing status: $status"
           [ "$status" = "complete" ] || { echo "::error::SARIF upload not processed ($status)"; exit 1; }
-          count=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=refs/pull/${{ github.event.pull_request.number }}/merge&tool_name=slopfence" --jq 'length')
-          echo "slopfence analyses on this PR: $count"
-          [ "$count" -ge 1 ] || { echo "::error::no slopfence analysis found for this PR"; exit 1; }
+          count=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$ANALYSIS_REF&tool_name=slopfence" --jq 'length')
+          echo "slopfence analyses on $ANALYSIS_REF: $count"
+          [ "$count" -ge 1 ] || { echo "::error::no slopfence analysis found for $ANALYSIS_REF"; exit 1; }
