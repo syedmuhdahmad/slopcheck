@@ -4,9 +4,11 @@ Two checks:
 
 * Declared dependencies (requirements*.txt, pyproject.toml) are looked up by
   their distribution name. This is the most reliable signal.
-* Imports are only looked up when they are not stdlib, not part of the
-  project, not installed, not a declared dependency and not a well-known
-  import name whose package has a different name (``yaml`` -> ``PyYAML``).
+* Imports in source code are opt-in (``check-imports``), because looking them
+  up sends their names to PyPI and can reveal private package names. Even then
+  they are only looked up when they are not stdlib, not part of the project,
+  not installed, not a declared dependency and not a well-known import name
+  whose package has a different name (``yaml`` -> ``PyYAML``).
 """
 
 from __future__ import annotations

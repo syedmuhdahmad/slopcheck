@@ -12,10 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo GIF in the README, recorded with VHS from `docs/demo/demo.tape` ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
 - `known-packages` config and `--known-packages` option: private packages that `SLOP001` accepts without a PyPI lookup, with glob support ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
 - `fail-on` config and `--fail-on` option to choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
+- `check-imports` config and `--check-imports` / `--no-check-imports` options ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
 - `strict` config and `--strict` option: unparseable Python files exit with code 2. Parse errors are now also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
 
 ### Changed
 
+- **Privacy:** `SLOP001` no longer sends import names from your source code to PyPI by default, because they can reveal private package names. Dependency files are still checked. Use `--check-imports` or `check-imports = true` to also look up imports. The README explains exactly what is sent ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+- The source distribution only contains the package, tests and docs needed to build it (about 40 KB instead of 410 KB) ([#35](https://github.com/syedmuhdahmad/slopfence/issues/35))
+- README no longer claims duplicate-helper detection, which isn't built yet ([#36](https://github.com/syedmuhdahmad/slopfence/issues/36))
 - Colour output: rule IDs are coloured by severity, locations are dimmed, and the summary counts are coloured. Plain output (`--no-color`, pipes, files) is unchanged
 
 ### Fixed

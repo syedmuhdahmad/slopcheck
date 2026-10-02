@@ -30,6 +30,7 @@ def test_known_packages_skip_dependency_and_import_checks(write, tmp_path):
         registry,
         select=["SLOP001"],
         known_packages=["corp-auth", "corp_billing", "corp-tools-*"],
+        check_imports=True,
     )
     # Only the genuinely unknown dependency is reported; known ones are never looked up.
     assert [(f.path, f.line) for f in result.findings] == [("requirements.txt", 3)]
@@ -130,6 +131,7 @@ def test_parse_errors_in_json_and_sarif(tmp_path, capsys):
     [
         ('[tool.slopfence]\nfail-on = "critical"\n', "'fail-on' must be one of high, medium, low"),
         ('[tool.slopfence]\nstrict = "yes"\n', "'strict' must be true or false"),
+        ("[tool.slopfence]\ncheck-imports = 1\n", "'check-imports' must be true or false"),
         ('[tool.slopfence]\nknown-packages = "corp"\n', "'known-packages' must be a list"),
     ],
 )

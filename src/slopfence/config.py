@@ -15,7 +15,15 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"select", "ignore", "exclude", "known-packages", "fail-on", "strict"}
+KNOWN_KEYS = {
+    "select",
+    "ignore",
+    "exclude",
+    "known-packages",
+    "check-imports",
+    "fail-on",
+    "strict",
+}
 FAIL_ON = [s.value for s in Severity]  # high, medium, low
 
 
@@ -29,6 +37,7 @@ class Config:
     ignore: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     known_packages: list[str] = field(default_factory=list)
+    check_imports: bool = False
     fail_on: str = "low"
     strict: bool = False
     path: Path | None = None
@@ -38,6 +47,13 @@ def _str_list(table: dict, key: str, where: str) -> list[str]:
     value = table[key]
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise ConfigError(f"{where}: '{key}' must be a list of strings")
+    return value
+
+
+def _bool(table: dict, key: str, where: str) -> bool:
+    value = table[key]
+    if not isinstance(value, bool):
+        raise ConfigError(f"{where}: '{key}' must be true or false")
     return value
 
 
@@ -90,10 +106,10 @@ def load_config(root: Path) -> Config:
         if value not in FAIL_ON:
             raise ConfigError(f"{where}: 'fail-on' must be one of {', '.join(FAIL_ON)}")
         config.fail_on = value
+    if "check-imports" in table:
+        config.check_imports = _bool(table, "check-imports", where)
     if "strict" in table:
-        if not isinstance(table["strict"], bool):
-            raise ConfigError(f"{where}: 'strict' must be true or false")
-        config.strict = table["strict"]
+        config.strict = _bool(table, "strict", where)
     return config
 
 

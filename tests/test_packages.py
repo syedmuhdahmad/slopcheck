@@ -79,7 +79,7 @@ def test_hallucinated_import_flagged(write, check):
     )
     write("src/utils.py", "")
     registry = FakeRegistry(set())
-    result = check("SLOP001", registry=registry)
+    result = check("SLOP001", registry=registry, check_imports=True)
     # Every occurrence is reported, so --diff and ignores work per line.
     assert rule_lines(result, "SLOP001") == [7, 8]
     # stdlib, local modules and known aliases are never looked up.
@@ -90,7 +90,7 @@ def test_installed_and_declared_imports_not_flagged(write, check):
     write("requirements.txt", "my-declared-lib\n")
     write("src/app.py", "import pytest\nimport my_declared_lib\n")
     registry = FakeRegistry({"my-declared-lib"})
-    assert check("SLOP001", registry=registry).findings == []
+    assert check("SLOP001", registry=registry, check_imports=True).findings == []
     assert "pytest" not in registry.queries
 
 
@@ -101,7 +101,17 @@ def test_unreachable_registry_never_flags(write, check):
 
     write("requirements.txt", "anything-at-all\n")
     write("src/app.py", "import nonexistent_xyz\n")
-    assert check("SLOP001", registry=Down()).findings == []
+    assert check("SLOP001", registry=Down(), check_imports=True).findings == []
+
+
+def test_imports_are_not_looked_up_by_default(write, check):
+    # Sending import names to PyPI can leak private package names, so it's opt-in (#34).
+    write("requirements.txt", "ghost-dep\n")
+    write("src/app.py", "import corp_secret_auth\n")
+    registry = FakeRegistry(set())
+    result = check("SLOP001", registry=registry)
+    assert [(f.path, f.line) for f in result.findings] == [("requirements.txt", 1)]
+    assert registry.queries == ["ghost-dep"]
 
 
 def test_offline_skips_lookups(write, check):
@@ -118,7 +128,7 @@ def test_single_file_still_knows_project_modules(write, tmp_path):
     write("src/mypkg/core.py", "")
     app = write("src/app.py", "import mypkg.core\nimport my_internal_dep\nimport invented_pkg_zz\n")
     registry = FakeRegistry({"my-internal-dep"})
-    result = run([app], tmp_path, registry, select=["SLOP001"])
+    result = run([app], tmp_path, registry, select=["SLOP001"], check_imports=True)
     assert rule_lines(result, "SLOP001") == [3]
     assert set(registry.queries) == {"invented_pkg_zz", "invented-pkg-zz"}
 
@@ -153,7 +163,7 @@ def test_ignored_and_external_requirements_stay_declared(write, check):
     )
     write("src/app.py", "import internal_lib\nimport internal_client\nimport git_thing\n")
     registry = FakeRegistry(set())
-    assert check("SLOP001", registry=registry).findings == []
+    assert check("SLOP001", registry=registry, check_imports=True).findings == []
     assert registry.queries == []  # none of them are looked up on PyPI
 
 
@@ -213,7 +223,7 @@ def test_every_import_occurrence_reported(write, check):
         import ghostpkg_q
         """,
     )
-    result = check("SLOP001", registry=FakeRegistry(set()))
+    result = check("SLOP001", registry=FakeRegistry(set()), check_imports=True)
     # The ignored first occurrence must not hide the second one.
     assert rule_lines(result, "SLOP001") == [2]
 

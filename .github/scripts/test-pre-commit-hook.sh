@@ -47,6 +47,8 @@ def test_user():
     assert user.name == "x"
 PY
 printf 'requests>=2\nflask-jwt-simple-auth\n' > requirements.txt
+# Opt in to import lookups, so the single-file run below really resolves local modules.
+printf '[tool.slopfence]\ncheck-imports = true\n' > pyproject.toml
 git add -A && git commit -qm fixture
 
 if out=$(pre-commit try-repo "$repo" slopfence --all-files 2>&1); then
