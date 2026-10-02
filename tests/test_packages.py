@@ -205,6 +205,9 @@ def test_private_index_skips_validation(write, check):
         ),
         ('[tool.uv]\nextra-index-url = ["https://pkgs.corp.example/simple"]\n', True),
         ('[tool.uv]\nindex-url = "https://pypi.org/simple"\n', False),
+        # Matched by host, so a private URL that merely contains "pypi.org" stays private.
+        ('[[tool.uv.index]]\nname = "corp"\nurl = "https://pypi.org.corp.example/simple"\n', True),
+        ('[[tool.poetry.source]]\nname = "corp"\nurl = "https://corp.example/pypi.org/"\n', True),
     ],
 )
 def test_project_wide_private_index(tmp_path, write, config, private):
@@ -220,6 +223,27 @@ def test_project_wide_private_index(tmp_path, write, config, private):
         "corp-auth": not private,
         "corp-billing": not private,
     }
+
+
+@pytest.mark.parametrize(
+    ("option", "private"),
+    [
+        ("--index-url https://pypi.org/simple", False),
+        ("-i https://pypi.org/simple", False),
+        ("--extra-index-url=https://files.pythonhosted.org/simple", False),
+        ("--extra-index-url https://pkgs.corp.example/simple", True),
+        ("--index-url https://corp.example/pypi.org/simple", True),
+        ("-i https://pypi.org.corp.example/simple  # mirror", True),
+    ],
+)
+def test_requirements_index_matched_by_host(write, check, option, private):
+    """Only PyPI's own hosts count as public; a URL that merely contains "pypi.org"
+    is a private index, so its packages are neither reported nor looked up."""
+    write("requirements.txt", f"{option}\ncorp-lib\n")
+    registry = FakeRegistry(set())
+    result = check("SLOP001", registry=registry)
+    assert registry.queries == ([] if private else ["corp-lib"])
+    assert rule_lines(result, "SLOP001") == ([] if private else [2])
 
 
 def test_pyproject_line_is_the_dependency_entry(write, check):

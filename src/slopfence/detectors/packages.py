@@ -19,6 +19,7 @@ import importlib.metadata
 import importlib.util
 import re
 import sys
+import urllib.parse
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -101,6 +102,7 @@ _REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _EGG = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
 # pip treats "#" as a comment only at line start or after whitespace (URLs contain "#egg=").
 _REQ_COMMENT = re.compile(r"(^|\s)#.*$")
+_INDEX_OPTION = re.compile(r"\s*(?:-i|--index-url|--extra-index-url)(?:\s*=\s*|\s+)(\S+)")
 _TABLE_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 
 
@@ -220,9 +222,7 @@ def _parse_requirements(text: str, rel: str) -> list[Dependency]:
     lines = text.splitlines()
     # With a non-PyPI index, a name missing from PyPI may be a private package.
     private_index = any(
-        re.match(r"\s*(-i|--index-url|--extra-index-url)\b", line)
-        and "pypi.org" not in line
-        and "pythonhosted.org" not in line
+        (m := _INDEX_OPTION.match(_REQ_COMMENT.sub("", line))) and not _is_public_index(m.group(1))
         for line in lines
     )
     deps = []
@@ -328,8 +328,18 @@ class _LineFinder:
         return 0 < line <= len(self.comments) and _suppresses_slop001(self.comments[line - 1])
 
 
+PUBLIC_INDEX_HOSTS = ("pypi.org", "pythonhosted.org")
+
+
 def _is_public_index(url: object) -> bool:
-    return isinstance(url, str) and ("pypi.org" in url or "pythonhosted.org" in url)
+    """Whether an index URL points at PyPI itself (by host, not substring)."""
+    if not isinstance(url, str):
+        return False
+    try:
+        host = (urllib.parse.urlsplit(url.strip()).hostname or "").lower()
+    except ValueError:
+        return False
+    return any(host == h or host.endswith("." + h) for h in PUBLIC_INDEX_HOSTS)
 
 
 def _uses_private_index(tool: dict) -> bool:
