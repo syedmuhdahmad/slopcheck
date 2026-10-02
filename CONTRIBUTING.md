@@ -43,7 +43,7 @@ New here? Look for issues labelled [`good first issue`](https://github.com/syedm
 ### What happens to your pull request
 
 - CI must pass.
-- **Copilot reviews every pull request automatically** and again after each push. The `copilot-review` check stays pending until Copilot has reviewed the latest commit, which usually takes 2–15 minutes. Its comments must be resolved like any other review. If Copilot is unavailable, a maintainer can add the `skip-copilot-review` label.
+- **Copilot reviews every pull request automatically** and again after each push. The `copilot-review` check waits (up to 25 minutes) until Copilot has reviewed the latest commit, which usually takes 1–15 minutes. If it times out, re-run it once the review appears. Its comments must be resolved like any other review. If Copilot is unavailable, a maintainer can add the `skip-copilot-review` label.
 - At least **one maintainer approval** is required.
 - All review conversations must be resolved.
 - Pull requests are **squash-merged**, so `main` has a clean, linear history with one commit per pull request. The pull request title becomes the commit message, so make it clear.
