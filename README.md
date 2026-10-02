@@ -1,4 +1,9 @@
-# slopfence
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/syedmuhdahmad/slopfence/main/docs/brand/logo-dark.svg">
+    <img alt="slopfence" src="https://raw.githubusercontent.com/syedmuhdahmad/slopfence/main/docs/brand/logo-light.svg" width="460">
+  </picture>
+</h1>
 
 [![PyPI](https://img.shields.io/pypi/v/slopfence?cacheSeconds=3600)](https://pypi.org/project/slopfence/)
 [![Python](https://img.shields.io/pypi/pyversions/slopfence?cacheSeconds=3600)](https://pypi.org/project/slopfence/)
