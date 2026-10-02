@@ -12,6 +12,7 @@ Two checks:
 from __future__ import annotations
 
 import ast
+import fnmatch
 import importlib.metadata
 import importlib.util
 import re
@@ -407,9 +408,13 @@ def _is_installed(name: str, installed: set[str]) -> bool:
 
 
 class PackageChecker:
-    def __init__(self, index: ProjectIndex, registry: Registry) -> None:
+    def __init__(
+        self, index: ProjectIndex, registry: Registry, known_packages: Iterable[str] = ()
+    ) -> None:
         self.index = index
         self.registry = registry
+        # Private/internal packages the user vouches for; globs allowed ("corp-*").
+        self._known = [normalize(p) for p in known_packages]
         self._installed = _installed_modules()
         self._declared = index.declared
         self._missing: dict[str, bool] = {}
@@ -418,7 +423,7 @@ class PackageChecker:
         for dep in self.index.dependencies:
             if only_paths is not None and dep.path not in only_paths:
                 continue
-            if not dep.validate or dep.suppressed:
+            if not dep.validate or dep.suppressed or self._is_known(dep.name):
                 continue
             if self.registry.exists(dep.name) is False:
                 yield Finding(
@@ -429,9 +434,14 @@ class PackageChecker:
                     f"Dependency '{dep.name}' does not exist on PyPI (possible hallucination)",
                 )
 
+    def _is_known(self, name: str) -> bool:
+        key = normalize(name)
+        return any(fnmatch.fnmatchcase(key, pattern) for pattern in self._known)
+
     def _should_lookup(self, name: str) -> bool:
         return not (
-            name in sys.stdlib_module_names
+            self._is_known(name)
+            or name in sys.stdlib_module_names
             or name == "__future__"
             or name in sys.builtin_module_names
             or name in self.index.local_modules

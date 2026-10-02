@@ -8,14 +8,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from slopfence.models import RULES
+from slopfence.models import RULES, Severity
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"select", "ignore", "exclude"}
+KNOWN_KEYS = {"select", "ignore", "exclude", "known-packages", "fail-on", "strict"}
+FAIL_ON = [s.value for s in Severity]  # high, medium, low
 
 
 class ConfigError(ValueError):
@@ -27,6 +28,9 @@ class Config:
     select: list[str] | None = None
     ignore: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
+    known_packages: list[str] = field(default_factory=list)
+    fail_on: str = "low"
+    strict: bool = False
     path: Path | None = None
 
 
@@ -79,6 +83,17 @@ def load_config(root: Path) -> Config:
         config.ignore = _rule_ids(_str_list(table, "ignore", where), "ignore", where)
     if "exclude" in table:
         config.exclude = _str_list(table, "exclude", where)
+    if "known-packages" in table:
+        config.known_packages = _str_list(table, "known-packages", where)
+    if "fail-on" in table:
+        value = table["fail-on"]
+        if value not in FAIL_ON:
+            raise ConfigError(f"{where}: 'fail-on' must be one of {', '.join(FAIL_ON)}")
+        config.fail_on = value
+    if "strict" in table:
+        if not isinstance(table["strict"], bool):
+            raise ConfigError(f"{where}: 'strict' must be true or false")
+        config.strict = table["strict"]
     return config
 
 

@@ -15,7 +15,7 @@ _COLOR = {Severity.HIGH: "\033[31m", Severity.MEDIUM: "\033[33m", Severity.LOW: 
 _RESET, _BOLD = "\033[0m", "\033[1m"
 
 
-def text(result: Result, color: bool = False) -> str:
+def text(result: Result, color: bool = False, strict: bool = False) -> str:
     def paint(s: str, code: str) -> str:
         return f"{code}{s}{_RESET}" if color else s
 
@@ -35,8 +35,9 @@ def text(result: Result, color: bool = False) -> str:
         out.append(f"{total} issue{'s' if total != 1 else ''} ({', '.join(parts)})")
     else:
         out.append(f"No issues found in {result.files_checked} files.")
+    label = "error" if strict else "warning"
     for path in result.parse_errors:
-        out.append(f"warning: skipped {path} (not valid Python)")
+        out.append(f"{label}: could not parse {path} (not valid Python), so it was not checked")
     return "\n".join(out)
 
 
@@ -63,7 +64,7 @@ def as_json(result: Result) -> str:
     )
 
 
-def sarif(result: Result) -> str:
+def sarif(result: Result, strict: bool = False) -> str:
     rules = [
         {
             "id": rule.id,
@@ -108,6 +109,31 @@ def sarif(result: Result) -> str:
                         "rules": rules,
                     }
                 },
+                "invocations": [
+                    {
+                        "executionSuccessful": not (strict and result.parse_errors),
+                        "toolExecutionNotifications": [
+                            {
+                                "level": "error" if strict else "warning",
+                                "message": {
+                                    "text": f"Could not parse {path} (not valid Python), "
+                                    "so it was not checked"
+                                },
+                                "locations": [
+                                    {
+                                        "physicalLocation": {
+                                            "artifactLocation": {
+                                                "uri": quote(path, safe="/"),
+                                                "uriBaseId": "%SRCROOT%",
+                                            }
+                                        }
+                                    }
+                                ],
+                            }
+                            for path in result.parse_errors
+                        ],
+                    }
+                ],
                 "results": results,
             }
         ],

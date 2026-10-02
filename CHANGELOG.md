@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `known-packages` config and `--known-packages` option: private packages that `SLOP001` accepts without a PyPI lookup, with glob support ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
+- `fail-on` config and `--fail-on` option to choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
+- `strict` config and `--strict` option: unparseable Python files exit with code 2. Parse errors are now also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
+
+### Fixed
+
+- `SLOP010` false positives from "for demo purposes" in human-written docs. It now needs "only" or placeholder wording nearby, and demo/example code is skipped ([#20](https://github.com/syedmuhdahmad/slopfence/issues/20))
+
 ## [0.1.1] - 2026-10-02
 
 ### Fixed

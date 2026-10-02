@@ -19,6 +19,10 @@ PLACEHOLDER_PATTERNS = [
         r"(implementation|app|application|system|world|scenario|environment|project|code)",
         r"\b(simplified|simple|basic|dummy|mock) (implementation|version|logic) "
         r"(for|to) (demo|demonstration|illustration|example|brevity|now)",
+        # "for demo purposes" alone is common in human docs (nltk: "A Scorer for Demo
+        # Purposes"); only flag it with "only" or next to placeholder wording.
+        r"\bfor (demo|demonstration|illustration|example) purposes only\b",
+        r"\b(simplified|hard-?coded|fake|dummy|mock|placeholder|stub|static)\b.{0,40}"
         r"\bfor (demo|demonstration|illustration|example) purposes\b",
         r"\b(placeholder|stub) (implementation|logic|code)\b",
         r"\b(replace|swap) (this|it) with (your|the|an?) (actual|real|own)\b",
@@ -64,8 +68,9 @@ def _scan(
 
 
 def check_placeholders(src: SourceFile) -> Iterator[Finding]:
-    # Test code often describes production behaviour on purpose; only check app code.
-    if src.is_test_file:
+    # Test code often describes production behaviour on purpose, and demo/example
+    # code is meant to be illustrative; only check application code.
+    if src.is_test_file or src.is_example_file:
         return
     yield from _scan(src, "SLOP010", PLACEHOLDER_PATTERNS, "Placeholder left in code")
 

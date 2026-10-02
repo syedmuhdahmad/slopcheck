@@ -90,6 +90,7 @@ def run(
     ignore: Iterable[str] = (),
     changed: diffmod.ChangedLines | None = None,
     exclude: Sequence[str] = (),
+    known_packages: Sequence[str] = (),
 ) -> Result:
     rules = set(select) if select else set(RULES)
     rules -= set(ignore)
@@ -104,7 +105,7 @@ def run(
     for path in py_files:
         src = load(path, root)
         if src is None:
-            result.parse_errors.append(str(path))
+            result.parse_errors.append(_rel_to(path, root))
             continue
         sources.append(src)
     result.files_checked = len(sources) + len(dep_files)
@@ -122,7 +123,9 @@ def run(
             all_py, all_deps = found_py, found_deps
         else:
             all_py, all_deps = discover([root])
-        checker = PackageChecker(build_index(root, all_py, all_deps), registry)
+        checker = PackageChecker(
+            build_index(root, all_py, all_deps), registry, known_packages=known_packages
+        )
         checked = {_rel_to(p, root) for p in dep_files}
         findings.extend(checker.check_dependencies(only_paths=checked))
         for src in sources:
