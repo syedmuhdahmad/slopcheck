@@ -2,7 +2,7 @@
 
 ## Roles
 
-- **Users**: anyone using slopcheck. Feedback, issues and examples are welcome.
+- **Users**: anyone using slopfence. Feedback, issues and examples are welcome.
 - **Contributors**: anyone who has had a pull request merged.
 - **Maintainers**: have write access, review and merge pull requests, triage issues, and cut releases. Listed in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 

@@ -1,8 +1,13 @@
-# slopcheck
+# slopfence
+
+[![PyPI](https://img.shields.io/pypi/v/slopfence)](https://pypi.org/project/slopfence/)
+[![Python](https://img.shields.io/pypi/pyversions/slopfence)](https://pypi.org/project/slopfence/)
+[![CI](https://github.com/syedmuhdahmad/slopfence/actions/workflows/ci.yml/badge.svg)](https://github.com/syedmuhdahmad/slopfence/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **A fast, deterministic quality gate for AI-assisted code.**
 
-slopcheck finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers) before it gets merged.
+slopfence finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers) before it gets merged.
 
 > 🚧 **Status: alpha (v0.1, Python only).** The first detectors work and are tested against 20,000+ files of real-world code for false positives. Expect rough edges. Feedback is very welcome. See [Contributing](#contributing).
 
@@ -10,22 +15,27 @@ slopcheck finds the junk that AI coding assistants leave behind (hallucinated pa
 
 ## Quick start
 
-Install from source (a PyPI release is coming):
+```bash
+pip install slopfence
+```
+
+Or run it without installing, using [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/):
 
 ```bash
-pip install git+https://github.com/syedmuhdahmad/slopcheck
+uvx slopfence .
+pipx run slopfence .
 ```
 
 Check a project:
 
 ```bash
-slopcheck .
+slopfence .
 ```
 
 Check only what your branch changed (ideal for pull requests):
 
 ```bash
-slopcheck --diff main
+slopfence --diff main
 ```
 
 ### Options
@@ -45,41 +55,41 @@ Exit codes: `0` no issues, `1` issues found, `2` error.
 ### Ignoring a finding
 
 ```python
-# In a real implementation, use the cache.  # slopcheck: ignore[SLOP010]
-x = legacy()  # slopcheck: ignore
+# In a real implementation, use the cache.  # slopfence: ignore[SLOP010]
+x = legacy()  # slopfence: ignore
 ```
 
-Put `# slopcheck: ignore-file` anywhere in a file to skip it. In `requirements.txt`, add `# slopcheck: ignore` to a line.
+Put `# slopfence: ignore-file` anywhere in a file to skip it. In `requirements.txt`, add `# slopfence: ignore` to a line.
 
 ### GitHub Action
 
 ```yaml
-# .github/workflows/slopcheck.yml
-name: slopcheck
+# .github/workflows/slopfence.yml
+name: slopfence
 on: pull_request
 permissions:
   contents: read
 jobs:
-  slopcheck:
+  slopfence:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: syedmuhdahmad/slopcheck@main
+      - uses: syedmuhdahmad/slopfence@v0.1.0
 ```
 
-On pull requests it automatically checks only the changed lines (set `diff: none` to check everything, or `diff: <ref>` for a specific ref). To show findings inline on the pull request, set `sarif-file: slopcheck.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
+On pull requests it automatically checks only the changed lines (set `diff: none` to check everything, or `diff: <ref>` for a specific ref). To show findings inline on the pull request, set `sarif-file: slopfence.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
 
 ### pre-commit
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/syedmuhdahmad/slopcheck
-    rev: main
+  - repo: https://github.com/syedmuhdahmad/slopfence
+    rev: v0.1.0
     hooks:
-      - id: slopcheck
+      - id: slopfence
 ```
 
 ## The problem
@@ -105,17 +115,18 @@ Reviewers miss these because the code *looks* fine. Each one is small. Together 
 | **Vulture, Knip** | Dead code | Fake tests, placeholders, near-duplicates |
 | **jscpd** | Copy-pasted code | Code that's similar but not identical |
 | **Socket, Snyk** | Supply-chain security | Code-quality patterns; mostly paid |
+| **[slopcheck](https://github.com/0xToxSec/slopcheck)** (unrelated project) | Checking for hallucinated packages before you install them | Code-quality patterns such as fake tests, placeholders and chat leftovers |
 | **AI code reviewers** (e.g. Claude `/code-review`) | Deep, context-aware review | Not deterministic, costs tokens, doesn't automatically check package registries, runs only when someone asks |
 
-No single tool focuses on **the failure modes of AI-written code**, built for reviewing pull requests. That's the gap slopcheck fills.
+No single tool focuses on **the failure modes of AI-written code**, built for reviewing pull requests. That's the gap slopfence fills.
 
-### slopcheck vs. AI reviewers: complementary, not competing
+### slopfence vs. AI reviewers: complementary, not competing
 
 ```text
 Developer + AI writes code
         │
         ▼
-slopcheck            ← fast, free, same result every time; runs on every commit
+slopfence            ← fast, free, same result every time; runs on every commit
         │
         ▼
 AI / LLM review      ← deep reasoning about logic and design
@@ -124,7 +135,7 @@ AI / LLM review      ← deep reasoning about logic and design
 Human review
 ```
 
-AI reviewers are smart but nondeterministic and cost money on every run. slopcheck catches the objective, repeatable problems in seconds with no API keys, so reviewers (human or AI) can spend their attention on what matters.
+AI reviewers are smart but nondeterministic and cost money on every run. slopfence catches the objective, repeatable problems in seconds with no API keys, so reviewers (human or AI) can spend their attention on what matters.
 
 ## Who needs it
 
@@ -136,7 +147,7 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopche
 
 ## Design principles
 
-1. **Detect patterns, not authorship.** slopcheck never tries to guess *whether AI wrote the code*. That's unreliable and leads to arguments. It flags low-quality patterns that AI commonly produces, no matter who wrote them.
+1. **Detect patterns, not authorship.** slopfence never tries to guess *whether AI wrote the code*. That's unreliable and leads to arguments. It flags low-quality patterns that AI commonly produces, no matter who wrote them.
 2. **Deterministic by default.** Rule-based checks with no LLM required. The same input always gives the same output.
 3. **Diff-first.** Check only what changed in a pull request. Nobody wants 4,000 warnings on an old codebase.
 4. **Low false positives over high recall.** A noisy linter gets uninstalled. Start strict, flag only obvious cases, and make everything configurable.
@@ -161,7 +172,7 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopche
 ## Example output
 
 ```text
-$ slopcheck --diff main
+$ slopfence --diff main
 
 src/auth.py
   12:1   SLOP001  Package 'flask-jwt-simple-auth' not found on PyPI (possible hallucination)  🔴
@@ -194,14 +205,14 @@ tests/test_billing.py
 ```
 
 - **Parser:** v0.1 uses Python's built-in `ast` and `tokenize` (no dependencies). **tree-sitter** is planned so new languages can be added without rewriting the detectors.
-- **Registry lookups** are cached locally (`~/.cache/slopcheck`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing".
+- **Registry lookups** are cached locally (`~/.cache/slopfence`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing".
 - **Optional LLM mode** sends only the unclear cases for a second opinion. Never required.
 
 ## Challenges (and how we plan to handle them)
 
 | Challenge | Why it's hard | Plan |
 |---|---|---|
-| **False positives** | Every noisy warning erodes trust; one bad week and teams disable the tool. | Conservative rules, severity levels, `# slopcheck: ignore[SLOP0xx]` comments, and a test corpus of real-world false positives. |
+| **False positives** | Every noisy warning erodes trust; one bad week and teams disable the tool. | Conservative rules, severity levels, `# slopfence: ignore[SLOP0xx]` comments, and a test corpus of real-world false positives. |
 | **Private / internal packages** | Internal packages look identical to hallucinated ones. | Allowlists, private registry support, and reading local lockfiles and workspace packages. |
 | **Registry rate limits** | Checking every import against PyPI/npm on every run is slow and gets throttled. | Local cache with TTL, batch lookups, offline mode. |
 | **"Is this really junk?"** | Some patterns (defensive code, stubs) are legitimate in context. | Flag only high-confidence cases by default; stricter checks are opt-in. |
@@ -214,7 +225,7 @@ tests/test_billing.py
 
 ### v0.1 (MVP): Python
 
-- [x] CLI: `slopcheck .` and `slopcheck --diff <branch>`
+- [x] CLI: `slopfence .` and `slopfence --diff <branch>`
 - [x] `SLOP001` packages that don't exist on PyPI (dependency files and imports)
 - [x] `SLOP010` placeholder comments
 - [x] `SLOP020` / `SLOP021` / `SLOP022` fake tests
@@ -222,11 +233,11 @@ tests/test_billing.py
 - [x] Ignore comments
 - [x] JSON and SARIF output
 - [x] GitHub Action and pre-commit hook
-- [ ] Publish to PyPI
+- [x] Publish to PyPI
 
 ### v0.2
 
-- [ ] Config file (`[tool.slopcheck]` in `pyproject.toml`)
+- [ ] Config file (`[tool.slopfence]` in `pyproject.toml`)
 - [ ] Near-duplicate detection (`SLOP030`)
 - [ ] Parallel processing for very large repos
 

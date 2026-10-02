@@ -1,4 +1,4 @@
-from slopcheck.detectors.packages import parse_dependency_file
+from slopfence.detectors.packages import parse_dependency_file
 from tests.conftest import FakeRegistry, rule_lines
 
 
@@ -12,7 +12,7 @@ def test_requirements_nonexistent_dependency(write, check):
         -r other.txt
         git+https://github.com/org/repo.git
         local-thing @ https://example.com/pkg.whl
-        made-up-but-ignored  # slopcheck: ignore
+        made-up-but-ignored  # slopfence: ignore
         """,
     )
     result = check("SLOP001", registry=FakeRegistry({"requests"}))
@@ -111,7 +111,7 @@ def test_offline_skips_lookups(write, check):
 
 
 def test_single_file_still_knows_project_modules(write, tmp_path):
-    from slopcheck.engine import run
+    from slopfence.engine import run
 
     write("requirements.txt", "my-internal-dep\n")
     write("src/mypkg/__init__.py", "")
@@ -127,9 +127,9 @@ def test_requirements_ignore_scopes(write, check):
     write(
         "requirements.txt",
         """
-        fake-one  # slopcheck: ignore[SLOP001]
-        fake-two  # slopcheck: ignore[SLOP051]
-        fake-three  # slopcheck: ignore
+        fake-one  # slopfence: ignore[SLOP001]
+        fake-two  # slopfence: ignore[SLOP051]
+        fake-three  # slopfence: ignore
         """,
     )
     result = check("SLOP001", registry=FakeRegistry(set()))
@@ -138,7 +138,7 @@ def test_requirements_ignore_scopes(write, check):
 
 
 def test_requirements_ignore_file(write, check):
-    write("requirements.txt", "# slopcheck: ignore-file\nfake-one\nfake-two\n")
+    write("requirements.txt", "# slopfence: ignore-file\nfake-one\nfake-two\n")
     assert check("SLOP001", registry=FakeRegistry(set())).findings == []
 
 
@@ -146,7 +146,7 @@ def test_ignored_and_external_requirements_stay_declared(write, check):
     write(
         "requirements.txt",
         """
-        internal-lib  # slopcheck: ignore
+        internal-lib  # slopfence: ignore
         internal-client @ https://example.com/internal.whl
         git+https://example.com/repo.git#egg=git-thing
         """,
@@ -172,7 +172,7 @@ def test_pyproject_line_is_the_dependency_entry(write, check):
         dependencies = [
             # "ghost-lib",
             "ghost-lib",
-            "other-ghost",  # slopcheck: ignore[SLOP001]
+            "other-ghost",  # slopfence: ignore[SLOP001]
         ]
         """,
     )
@@ -209,7 +209,7 @@ def test_every_import_occurrence_reported(write, check):
     write(
         "src/app.py",
         """
-        import ghostpkg_q  # slopcheck: ignore
+        import ghostpkg_q  # slopfence: ignore
         import ghostpkg_q
         """,
     )
@@ -224,14 +224,14 @@ def test_directives_inside_toml_strings_are_ignored(write, check):
         """
         [project]
         name = "demo"
-        description = "# slopcheck: ignore-file"
+        description = "# slopfence: ignore-file"
         readme = \"\"\"
-        # slopcheck: ignore-file
+        # slopfence: ignore-file
         \"\"\"
         dependencies = [
             "ghost-one",
-            "ghost-two",  # slopcheck: ignore
-            "ghost-three # slopcheck: ignore",
+            "ghost-two",  # slopfence: ignore
+            "ghost-three # slopfence: ignore",
         ]
         """,
     )
@@ -257,7 +257,7 @@ def test_include_group_dependencies_are_checked_once(write, check):
 
 
 def test_toml_comments():
-    from slopcheck.detectors.packages import toml_comments
+    from slopfence.detectors.packages import toml_comments
 
     text = 'a = "x # no"  # yes\nb = \'# no\'\nc = """\n# no\n"""  # end\n# top'
     assert toml_comments(text) == ["# yes", "", "", "", "# end", "# top"]

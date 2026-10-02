@@ -1,10 +1,10 @@
 # Security Policy
 
-slopcheck is partly a **supply-chain security tool** (it detects hallucinated and slopsquatted packages), so we take security reports seriously.
+slopfence is partly a **supply-chain security tool** (it detects hallucinated and slopsquatted packages), so we take security reports seriously.
 
 ## Supported versions
 
-slopcheck is pre-release. Until v1.0, only the latest release and `main` receive security fixes.
+slopfence is pre-release. Until v1.0, only the latest release and `main` receive security fixes.
 
 | Version | Supported |
 |---|---|
@@ -18,7 +18,7 @@ slopcheck is pre-release. Until v1.0, only the latest release and `main` receive
 
 Report privately using GitHub's private vulnerability reporting:
 
-👉 **[Report a vulnerability](https://github.com/syedmuhdahmad/slopcheck/security/advisories/new)**
+👉 **[Report a vulnerability](https://github.com/syedmuhdahmad/slopfence/security/advisories/new)**
 
 Please include:
 
@@ -41,7 +41,7 @@ We'll coordinate disclosure with you, publish a GitHub Security Advisory once a 
 
 Examples of issues we want to hear about:
 
-- slopcheck executing, importing, or installing code from the project it scans
+- slopfence executing, importing, or installing code from the project it scans
 - Registry lookups that can be abused (e.g. leaking private package names to public registries without opt-in)
 - Cache poisoning that makes a malicious package appear safe
 - A detector bypass that lets a known-malicious package pass as safe

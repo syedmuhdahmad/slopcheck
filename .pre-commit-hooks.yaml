@@ -1,7 +1,7 @@
-- id: slopcheck
-  name: slopcheck
+- id: slopfence
+  name: slopfence
   description: Find the junk AI coding assistants leave behind.
-  entry: slopcheck
+  entry: slopfence
   language: python
   types_or: [python, toml, text]
   files: (\.py|requirements.*\.txt|pyproject\.toml)$

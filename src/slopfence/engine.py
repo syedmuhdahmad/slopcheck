@@ -7,12 +7,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from slopcheck import diff as diffmod
-from slopcheck.detectors import FILE_DETECTORS
-from slopcheck.detectors.packages import PackageChecker, build_index
-from slopcheck.models import RULES, Finding
-from slopcheck.registry import Registry
-from slopcheck.source import SourceFile, load
+from slopfence import diff as diffmod
+from slopfence.detectors import FILE_DETECTORS
+from slopfence.detectors.packages import PackageChecker, build_index
+from slopfence.models import RULES, Finding
+from slopfence.registry import Registry
+from slopfence.source import SourceFile, load
 
 EXCLUDED_DIRS = {
     ".git",

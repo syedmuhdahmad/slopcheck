@@ -20,9 +20,9 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from slopcheck.models import Finding
-from slopcheck.registry import OfflineRegistry, Registry, normalize
-from slopcheck.source import IGNORE_FILE_RE, IGNORE_RE, SourceFile, read_source
+from slopfence.models import Finding
+from slopfence.registry import OfflineRegistry, Registry, normalize
+from slopfence.source import IGNORE_FILE_RE, IGNORE_RE, SourceFile, read_source
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -156,7 +156,7 @@ def toml_comments(text: str) -> list[str]:
     """The comment part of each line ("" if none), ignoring "#" inside TOML strings.
 
     Tracks multi-line strings across lines so quoted values can never carry
-    a slopcheck directive.
+    a slopfence directive.
     """
     comments: list[str] = []
     multiline: str | None = None

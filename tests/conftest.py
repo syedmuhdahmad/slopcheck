@@ -6,21 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from slopcheck.engine import Result, run
-from slopcheck.registry import OfflineRegistry
+from slopfence.engine import Result, run
+from slopfence.registry import OfflineRegistry
 
 
 class FakeRegistry:
     """Registry where only the listed packages exist."""
 
     def __init__(self, existing: set[str]) -> None:
-        from slopcheck.registry import normalize
+        from slopfence.registry import normalize
 
         self.existing = {normalize(n) for n in existing}
         self.queries: list[str] = []
 
     def exists(self, name: str) -> bool | None:
-        from slopcheck.registry import normalize
+        from slopfence.registry import normalize
 
         self.queries.append(name)
         return normalize(name) in self.existing

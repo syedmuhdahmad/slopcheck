@@ -10,8 +10,8 @@ import ast
 import builtins
 from collections.abc import Iterator
 
-from slopcheck.models import Finding
-from slopcheck.source import SourceFile
+from slopfence.models import Finding
+from slopfence.source import SourceFile
 
 MOCK_FACTORIES = {"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "create_autospec"}
 PATCH_NAMES = {"patch", "patch.object", "patch.dict", "patch.multiple"}

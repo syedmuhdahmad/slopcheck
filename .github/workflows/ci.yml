@@ -27,8 +27,8 @@ jobs:
         run: |
           ruff check .
           ruff format --check .
-      - name: slopcheck checks itself
-        run: slopcheck src tests
+      - name: slopfence checks itself
+        run: slopfence src tests
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@v24
         with:

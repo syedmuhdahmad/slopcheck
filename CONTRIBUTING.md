@@ -1,6 +1,6 @@
-# Contributing to slopcheck
+# Contributing to slopfence
 
-Thanks for your interest in slopcheck! This project is at an early stage, which is the best time to shape it. Every kind of contribution helps: code, detector ideas, real-world examples, docs, and bug reports.
+Thanks for your interest in slopfence! This project is at an early stage, which is the best time to shape it. Every kind of contribution helps: code, detector ideas, real-world examples, docs, and bug reports.
 
 By participating, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -12,11 +12,11 @@ By participating, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 | Report a false positive | Open an issue with the **False positive** template |
 | Propose a new detector | Open an issue with the **Detector proposal** template |
 | Report a bug | Open an issue with the **Bug report** template |
-| Ask a question or discuss an idea | Start a [Discussion](https://github.com/syedmuhdahmad/slopcheck/discussions) |
+| Ask a question or discuss an idea | Start a [Discussion](https://github.com/syedmuhdahmad/slopfence/discussions) |
 | Report a security vulnerability | **Don't open an issue.** See [SECURITY.md](SECURITY.md) |
 | Fix something or add a feature | Read on |
 
-New here? Look for issues labelled [`good first issue`](https://github.com/syedmuhdahmad/slopcheck/labels/good%20first%20issue) or [`help wanted`](https://github.com/syedmuhdahmad/slopcheck/labels/help%20wanted).
+New here? Look for issues labelled [`good first issue`](https://github.com/syedmuhdahmad/slopfence/labels/good%20first%20issue) or [`help wanted`](https://github.com/syedmuhdahmad/slopfence/labels/help%20wanted).
 
 ## Before you start coding
 
@@ -57,14 +57,14 @@ pip install -e '.[dev]'
 
 pytest                           # tests
 ruff check . && ruff format --check .
-slopcheck src tests              # slopcheck must pass on its own code
+slopfence src tests              # slopfence must pass on its own code
 npx markdownlint-cli2 "**/*.md" "!.venv/**"
 ```
 
 ### Adding a detector
 
-1. Add the rule to `RULES` in `src/slopcheck/models.py`.
-2. Write the detector in `src/slopcheck/detectors/` and register it in `detectors/__init__.py`.
+1. Add the rule to `RULES` in `src/slopfence/models.py`.
+2. Write the detector in `src/slopfence/detectors/` and register it in `detectors/__init__.py`.
 3. Add tests with **both** flagged and not-flagged cases. Real-world code that must stay quiet is the most valuable test.
 4. Run it against a large codebase (for example your Python install's standard library) and check for false positives before opening the pull request.
 
@@ -85,7 +85,7 @@ A detector is only useful if people trust it. Before proposing or writing one, c
 1. **Is it objective?** Could two reviewers agree on whether a given snippet matches?
 2. **Is it high-confidence?** It's better to miss some cases than to flag correct code.
 3. **Is it actionable?** The message should tell the user what's wrong and how to fix it.
-4. **Is it about the pattern, not the author?** slopcheck never tries to guess whether AI wrote the code.
+4. **Is it about the pattern, not the author?** slopfence never tries to guess whether AI wrote the code.
 
 ## Licensing of contributions
 

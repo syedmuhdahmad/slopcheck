@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Protocol
 
-from slopcheck import __version__
+from slopfence import __version__
 
 EXISTS_TTL = 7 * 24 * 3600
 MISSING_TTL = 24 * 3600
@@ -39,8 +39,8 @@ class OfflineRegistry:
 class PyPIRegistry:
     def __init__(self, cache_dir: Path | None = None, timeout: float = 5.0) -> None:
         if cache_dir is None:
-            base = os.environ.get("SLOPCHECK_CACHE_DIR") or os.environ.get("XDG_CACHE_HOME")
-            cache_dir = Path(base) / "slopcheck" if base else Path.home() / ".cache" / "slopcheck"
+            base = os.environ.get("SLOPFENCE_CACHE_DIR") or os.environ.get("XDG_CACHE_HOME")
+            cache_dir = Path(base) / "slopfence" if base else Path.home() / ".cache" / "slopfence"
         self.cache_file = cache_dir / "pypi.json"
         self.timeout = timeout
         self._cache: dict[str, list] = self._load()
@@ -82,7 +82,7 @@ class PyPIRegistry:
         req = urllib.request.Request(
             f"https://pypi.org/pypi/{key}/json",
             method="HEAD",
-            headers={"User-Agent": f"slopcheck/{__version__}"},
+            headers={"User-Agent": f"slopfence/{__version__}"},
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:

@@ -102,9 +102,9 @@ def test_ignore_comment_on_line(write, check):
     write(
         "src/app.py",
         """
-        # In a real implementation, retry.  # slopcheck: ignore[SLOP010]
-        # I hope this helps  # slopcheck: ignore
-        # In a real implementation, log it.  # slopcheck: ignore[SLOP051]
+        # In a real implementation, retry.  # slopfence: ignore[SLOP010]
+        # I hope this helps  # slopfence: ignore
+        # In a real implementation, log it.  # slopfence: ignore[SLOP051]
         """,
     )
     assert rule_lines(check(), "SLOP010") == [3]
@@ -112,7 +112,7 @@ def test_ignore_comment_on_line(write, check):
 
 
 def test_ignore_file(write, check):
-    write("src/app.py", "# slopcheck: ignore-file\n# I hope this helps!\n")
+    write("src/app.py", "# slopfence: ignore-file\n# I hope this helps!\n")
     assert check().findings == []
 
 

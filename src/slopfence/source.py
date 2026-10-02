@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 
-IGNORE_RE = re.compile(r"#\s*slopcheck:\s*ignore(?:\[(?P<rules>[A-Z0-9,\s]+)\])?(?!-)", re.I)
+IGNORE_RE = re.compile(r"#\s*slopfence:\s*ignore(?:\[(?P<rules>[A-Z0-9,\s]+)\])?(?!-)", re.I)
 _ESCAPE_SEQ = re.compile(r"\\[ntr]")
-IGNORE_FILE_RE = re.compile(r"#\s*slopcheck:\s*ignore-file\b", re.I)
+IGNORE_FILE_RE = re.compile(r"#\s*slopfence:\s*ignore-file\b", re.I)
 
 
 @dataclass
