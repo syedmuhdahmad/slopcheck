@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from slopfence import indexes
 from slopfence.engine import Result, run
 from slopfence.registry import OfflineRegistry
 
@@ -45,6 +46,9 @@ def no_index_config(monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("PIP_CONFIG_FILE", os.devnull)
     monkeypatch.setenv("UV_NO_CONFIG", "1")
+    # Tests that switch config files back on must never see /etc/pip.conf and friends.
+    monkeypatch.setattr(indexes, "PIP_SYSTEM_FILES", ())
+    monkeypatch.setattr(indexes, "UV_SYSTEM_FILES", ())
 
 
 @pytest.fixture

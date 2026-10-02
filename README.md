@@ -118,11 +118,11 @@ If your packages may come from an index other than PyPI, a name that PyPI doesn'
 | Where | What counts as private |
 |---|---|
 | `requirements*.txt` | `-i` / `--index-url` / `--extra-index-url` with a non-PyPI URL: that file's packages |
-| `pyproject.toml` | `[[tool.poetry.source]]` (except `explicit` ones), `[[tool.uv.index]]` (except `explicit` ones), `[tool.uv] index-url` / `extra-index-url`, `[[tool.pdm.source]]`: that file's packages. A per-dependency Poetry `source` or `[tool.uv.sources]` entry: that package |
+| `pyproject.toml` | `[[tool.poetry.source]]` (except `explicit` ones), `[[tool.uv.index]]` (except `explicit` ones), `[tool.uv] index-url` / `extra-index-url` (also under `[tool.uv.pip]`), `[[tool.pdm.source]]`: that file's packages. A per-dependency Poetry `source` or `[tool.uv.sources]` entry: that package |
 | `Pipfile`, `Pipfile.lock` | A `[[source]]` that isn't PyPI |
 | Environment variables | `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `UV_INDEX`, `UV_DEFAULT_INDEX`, `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL` |
 | pip configuration | `pip.conf` / `pip.ini` in pip's global, user and virtualenv locations, and `PIP_CONFIG_FILE` (`[global]` and `[install]` sections) |
-| uv configuration | `uv.toml` in the project, user and system config folders, or `UV_CONFIG_FILE` (`UV_NO_CONFIG` turns this off) |
+| uv configuration | `uv.toml` in the project, user and system config folders, or `UV_CONFIG_FILE` (`UV_NO_CONFIG` turns this off), including its `[pip]` table used by `uv pip install` |
 
 A private index in a project file stops lookups for that file's dependencies, and for imports with `--check-imports`. A private index in your **environment** (variables, pip or uv configuration) could serve any package, so `SLOP001` makes **no lookups at all** and the report says so in a note. An index is public only if its host is `pypi.org` or `pythonhosted.org`. slopfence never prints index URLs, because they can contain credentials.
 

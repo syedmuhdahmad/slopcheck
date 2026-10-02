@@ -142,6 +142,50 @@ def test_private_index_in_project_uv_toml(tmp_path, body):
     assert found == f"uv configuration ({tmp_path / 'uv.toml'})"
 
 
+@pytest.mark.parametrize(
+    "body",
+    [f'[pip]\nindex-url = "{PRIVATE}"\n', f'[pip]\nextra-index-url = ["{PRIVATE}"]\n'],
+)
+def test_private_index_in_uv_pip_settings(tmp_path, body):
+    """uv's [pip] table, used by ``uv pip install``, counts too."""
+    (tmp_path / "uv.toml").write_text(body)
+    env = isolated_env(tmp_path, PIP_CONFIG_FILE=os.devnull)
+    found = find_private_index(tmp_path, env, tmp_path)
+    assert found == f"uv configuration ({tmp_path / 'uv.toml'})"
+
+
+def test_private_index_in_tool_uv_pip(write, check):
+    """[tool.uv.pip] in pyproject.toml makes that file's dependencies private."""
+    write(
+        "pyproject.toml",
+        f'[project]\nname = "demo"\ndependencies = ["corp-auth"]\n\n'
+        f'[tool.uv.pip]\nindex-url = "{PRIVATE}"\n',
+    )
+    registry = FakeRegistry(set())
+    assert check("SLOP001", registry=registry).findings == []
+    assert registry.queries == []
+
+
+def test_system_config_files(tmp_path, monkeypatch):
+    """System-wide pip.conf and uv.toml (e.g. /etc/pip.conf) are read; tests use stand-ins."""
+    from slopfence import indexes
+
+    pip_conf = tmp_path / "etc-pip.conf"
+    pip_conf.write_text(f"[global]\nindex-url = {PRIVATE}\n")
+    monkeypatch.setattr(indexes, "PIP_SYSTEM_FILES", (pip_conf,))
+    env = isolated_env(tmp_path, UV_NO_CONFIG="1")
+    if sys.platform != "win32":  # Windows has no fixed system paths, only PROGRAMDATA
+        assert find_private_index(tmp_path, env, tmp_path) == f"pip configuration ({pip_conf})"
+
+    monkeypatch.setattr(indexes, "PIP_SYSTEM_FILES", ())
+    uv_toml = tmp_path / "etc-uv.toml"
+    uv_toml.write_text(f'index-url = "{PRIVATE}"\n')
+    monkeypatch.setattr(indexes, "UV_SYSTEM_FILES", (uv_toml,))
+    env = isolated_env(tmp_path, PIP_CONFIG_FILE=os.devnull)
+    if sys.platform != "win32":
+        assert find_private_index(tmp_path, env, tmp_path) == f"uv configuration ({uv_toml})"
+
+
 def test_uv_explicit_index_and_no_config(tmp_path):
     """An explicit uv index only serves pinned packages; UV_NO_CONFIG skips uv.toml."""
     (tmp_path / "uv.toml").write_text(

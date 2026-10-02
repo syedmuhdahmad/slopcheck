@@ -24,6 +24,13 @@ else:  # pragma: no cover
 
 PUBLIC_INDEX_HOSTS = ("pypi.org", "pythonhosted.org")
 
+# System-wide config files at fixed paths (Linux and macOS). Folders that come from
+# environment variables (XDG_CONFIG_DIRS, PROGRAMDATA...) are handled separately.
+PIP_SYSTEM_FILES: tuple[Path, ...] = (Path("/etc/pip.conf"),) + (
+    (Path("/Library/Application Support/pip/pip.conf"),) if sys.platform == "darwin" else ()
+)
+UV_SYSTEM_FILES: tuple[Path, ...] = (Path("/etc/uv/uv.toml"),)
+
 
 def is_public_index(url: object) -> bool:
     """Whether an index URL points at PyPI itself (by host, not substring)."""
@@ -73,11 +80,22 @@ def uses_private_index(tool: Mapping) -> bool:
 
 
 def uv_config_is_private(uv: Mapping) -> bool:
-    """Whether uv settings (``[tool.uv]`` or a ``uv.toml``) use a non-PyPI index."""
+    """Whether uv settings (``[tool.uv]`` or a ``uv.toml``) use a non-PyPI index.
+
+    Includes the ``[pip]`` table (``[tool.uv.pip]``), which ``uv pip install`` uses.
+    """
     for index in _list(uv.get("index")):
         if isinstance(index, dict) and not index.get("explicit") and _private([index.get("url")]):
             return True
-    return _private([uv.get("index-url"), *_list(uv.get("extra-index-url"))])
+    pip = uv.get("pip") if isinstance(uv.get("pip"), dict) else {}
+    return _private(
+        [
+            uv.get("index-url"),
+            *_list(uv.get("extra-index-url")),
+            pip.get("index-url"),
+            *_list(pip.get("extra-index-url")),
+        ]
+    )
 
 
 def pipfile_is_private(data: Mapping) -> bool:
@@ -109,9 +127,8 @@ def _pip_config_files(environ: Mapping[str, str], home: Path) -> Iterator[Path]:
         for base in environ.get("XDG_CONFIG_DIRS", "/etc/xdg").split(os.pathsep):
             if base:
                 yield Path(base, "pip", "pip.conf")
-        yield Path("/etc/pip.conf")
+        yield from PIP_SYSTEM_FILES
         if sys.platform == "darwin":
-            yield Path("/Library/Application Support/pip/pip.conf")
             yield home / "Library" / "Application Support" / "pip" / "pip.conf"
         yield home / ".pip" / "pip.conf"
         yield Path(environ.get("XDG_CONFIG_HOME") or home / ".config", "pip", "pip.conf")
@@ -154,7 +171,7 @@ def _uv_config_files(root: Path, environ: Mapping[str, str], home: Path) -> Iter
         for base in environ.get("XDG_CONFIG_DIRS", "/etc/xdg").split(os.pathsep):
             if base:
                 yield Path(base, "uv", "uv.toml")
-        yield Path("/etc/uv/uv.toml")
+        yield from UV_SYSTEM_FILES
 
 
 def _uv_toml_is_private(path: Path) -> bool:
