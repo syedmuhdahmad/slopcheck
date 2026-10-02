@@ -151,3 +151,71 @@ jobs:
 
           sys.exit(1 if errors else 0)
           PY
+
+  # Uploads a real SARIF report to code scanning. Runs only on pull requests from
+  # this repository, so alerts attach to the PR rather than to main, and fork PRs
+  # (whose tokens can't write security events) are skipped.
+  sarif-upload:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Scan the committed fixture project
+        id: scan
+        continue-on-error: true
+        uses: ./
+        with:
+          paths: .github/action-fixture
+          diff: none
+          sarif-file: slopfence.sarif
+
+      - name: SARIF paths point at files in this repository
+        env:
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          from urllib.parse import unquote
+
+          assert os.environ["OUTCOME"] == "failure", "scan should fail on the fixture"
+          results = json.load(open("slopfence.sarif"))["runs"][0]["results"]
+          found = set()
+          for r in results:
+              uri = unquote(r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+              assert Path(uri).is_file(), f"SARIF uri {uri!r} is not a file in the repo"
+              found.add((r["ruleId"], uri))
+          expected = {
+              ("SLOP001", ".github/action-fixture/requirements.txt"),
+              ("SLOP010", ".github/action-fixture/src/app.py"),
+              ("SLOP020", ".github/action-fixture/tests/test_app.py"),
+          }
+          print(sorted(found))
+          sys.exit(0 if found == expected else f"expected {sorted(expected)}")
+          PY
+
+      - name: Upload to code scanning
+        id: upload
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slopfence.sarif
+          category: slopfence-action-test
+
+      - name: Code scanning received the analysis
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.upload.outputs.sarif-id }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/sarifs/$SARIF_ID" --jq .processing_status)
+          echo "processing status: $status"
+          [ "$status" = "complete" ] || { echo "::error::SARIF upload not processed ($status)"; exit 1; }
+          count=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=refs/pull/${{ github.event.pull_request.number }}/merge&tool_name=slopfence" --jq 'length')
+          echo "slopfence analyses on this PR: $count"
+          [ "$count" -ge 1 ] || { echo "::error::no slopfence analysis found for this PR"; exit 1; }

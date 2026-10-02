@@ -38,7 +38,8 @@ runs:
         # `pip install` (PEP 668), and Windows usually has no `python3`.
         py=""
         for candidate in python3 python; do
-          if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import sys" >/dev/null 2>&1; then
+          if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c "import sys; sys.exit(sys.version_info < (3, 10))" >/dev/null 2>&1; then
             py="$candidate"
             break
           fi

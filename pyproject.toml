@@ -53,6 +53,8 @@ packages = ["src/slopfence"]
 testpaths = ["tests"]
 
 [tool.ruff]
+# Deliberately sloppy project used by the GitHub Action test.
+extend-exclude = [".github/action-fixture"]
 line-length = 100
 target-version = "py310"
 
