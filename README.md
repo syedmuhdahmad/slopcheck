@@ -160,13 +160,13 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopfen
 | `SLOP001` | Import of a package that doesn't exist on PyPI / npm | 🔴 High | ✅ v0.1 (Python) |
 | `SLOP002` | Dependency that is very new or has suspiciously few downloads (slopsquatting risk) | 🔴 High | Planned |
 | `SLOP010` | Placeholder / stub comment (`In a real implementation…`, `Simplified for demo`) | 🟠 Medium | ✅ v0.1 |
-| `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium | Planned |
+| `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium | Planned for v0.2 ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22)) |
 | `SLOP020` | Test that only asserts on its own mocks | 🔴 High | ✅ v0.1 |
 | `SLOP021` | Test with no meaningful assertion (`assert True`, `toBeDefined()` only) | 🟠 Medium | ✅ v0.1 |
 | `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High | ✅ v0.1 |
-| `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium | Planned |
-| `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low | Planned |
-| `SLOP050` | Comment that only restates the code | 🟡 Low | Planned |
+| `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium | Planned for v0.2 ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11)) |
+| `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low | Planned for v0.2 ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21)) |
+| `SLOP050` | Comment that only restates the code | 🟡 Low | Planned for v0.2 ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23)) |
 | `SLOP051` | Leftover chat text in code (`Certainly! Here's…`) | 🟠 Medium | ✅ v0.1 |
 
 ## Example output
@@ -237,9 +237,35 @@ tests/test_billing.py
 
 ### v0.2
 
-- [ ] Config file (`[tool.slopfence]` in `pyproject.toml`)
-- [ ] Near-duplicate detection (`SLOP030`)
-- [ ] Parallel processing for very large repos
+Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/milestone/2) and on the [roadmap board](https://github.com/users/syedmuhdahmad/projects/1).
+
+#### Planned features
+
+- [ ] Config file: `[tool.slopfence]` in `pyproject.toml` ([#10](https://github.com/syedmuhdahmad/slopfence/issues/10))
+- [ ] `SLOP030` near-duplicate functions ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
+- [ ] Parallel processing for large repos ([#12](https://github.com/syedmuhdahmad/slopfence/issues/12))
+
+#### Reliability
+
+- [ ] Test the GitHub Action in a real workflow, including SARIF upload ([#13](https://github.com/syedmuhdahmad/slopfence/issues/13))
+- [ ] Test the pre-commit hook with `pre-commit` ([#14](https://github.com/syedmuhdahmad/slopfence/issues/14))
+- [ ] Allowlist for private packages ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
+- [ ] Better import-name to package-name mapping ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
+- [ ] Detect private indexes from `pip.conf`, uv and Poetry ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
+- [ ] `--fail-on` severity threshold ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
+- [ ] Option to fail on unparseable files ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
+- [ ] Fewer `SLOP010` false positives from "for demo purposes" ([#20](https://github.com/syedmuhdahmad/slopfence/issues/20))
+
+#### New rules
+
+- [ ] `SLOP040` `except Exception` that silently swallows errors ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
+- [ ] `SLOP011` stub functions that only `pass` or return fake data ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
+- [ ] `SLOP050` comments that only restate the code ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23))
+
+#### Project
+
+- [ ] Demo GIF in the README ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
+- [ ] Release v0.2.0 ([#25](https://github.com/syedmuhdahmad/slopfence/issues/25))
 
 ### Later
 
