@@ -3,7 +3,7 @@ requires = ["hatchling>=1.32.4"]
 build-backend = "hatchling.build"
 
 [project]
-name = "slopcheck"
+name = "slopfence"
 dynamic = ["version"]
 description = "A fast, deterministic quality gate for AI-assisted code: catches hallucinated packages, fake tests, placeholder stubs and chat leftovers."
 readme = "README.md"
@@ -19,6 +19,11 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
   "Topic :: Security",
 ]
@@ -30,17 +35,19 @@ dependencies = [
 dev = ["pytest>=9.1.1", "ruff>=0.16.9"]
 
 [project.scripts]
-slopcheck = "slopcheck.cli:main"
+slopfence = "slopfence.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/syedmuhdahmad/slopcheck"
-Issues = "https://github.com/syedmuhdahmad/slopcheck/issues"
+Homepage = "https://github.com/syedmuhdahmad/slopfence"
+Issues = "https://github.com/syedmuhdahmad/slopfence/issues"
+Changelog = "https://github.com/syedmuhdahmad/slopfence/blob/main/CHANGELOG.md"
+Source = "https://github.com/syedmuhdahmad/slopfence"
 
 [tool.hatch.version]
-path = "src/slopcheck/__init__.py"
+path = "src/slopfence/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/slopcheck"]
+packages = ["src/slopfence"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

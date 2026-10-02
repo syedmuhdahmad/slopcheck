@@ -6,11 +6,11 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from slopcheck import __version__, reporters
-from slopcheck import diff as diffmod
-from slopcheck.engine import run
-from slopcheck.models import RULES
-from slopcheck.registry import OfflineRegistry, PyPIRegistry
+from slopfence import __version__, reporters
+from slopfence import diff as diffmod
+from slopfence.engine import run
+from slopfence.models import RULES
+from slopfence.registry import OfflineRegistry, PyPIRegistry
 
 EXIT_OK, EXIT_FINDINGS, EXIT_ERROR = 0, 1, 2
 
@@ -25,7 +25,7 @@ def _rule_list(value: str) -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="slopcheck",
+        prog="slopfence",
         description="Find the junk AI coding assistants leave behind.",
     )
     parser.add_argument(
@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exit-zero", action="store_true", help="exit 0 even if issues are found")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument("--list-rules", action="store_true", help="list rules and exit")
-    parser.add_argument("--version", action="version", version=f"slopcheck {__version__}")
+    parser.add_argument("--version", action="version", version=f"slopfence {__version__}")
     return parser
 
 
@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for path in args.paths:
         if not path.exists():
-            print(f"slopcheck: error: {path} does not exist", file=sys.stderr)
+            print(f"slopfence: error: {path} does not exist", file=sys.stderr)
             return EXIT_ERROR
 
     start = args.paths[0].resolve()
@@ -73,7 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             changed = diffmod.changed_lines(root, args.diff)
         except diffmod.DiffError as err:
-            print(f"slopcheck: error: --diff {args.diff}: {err}", file=sys.stderr)
+            print(f"slopfence: error: --diff {args.diff}: {err}", file=sys.stderr)
             return EXIT_ERROR
 
     registry = OfflineRegistry() if args.offline else PyPIRegistry()

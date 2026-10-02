@@ -3,8 +3,8 @@ import subprocess
 
 import pytest
 
-from slopcheck import diff as diffmod
-from slopcheck.cli import main
+from slopfence import diff as diffmod
+from slopfence.cli import main
 
 SLOPPY = """\
 def charge(card):
@@ -47,7 +47,7 @@ def test_sarif_output(tmp_path):
     doc = json.loads(out.read_text())
     assert doc["version"] == "2.1.0"
     run = doc["runs"][0]
-    assert run["tool"]["driver"]["name"] == "slopcheck"
+    assert run["tool"]["driver"]["name"] == "slopfence"
     [res] = run["results"]
     assert res["ruleId"] == "SLOP010"
     assert res["level"] == "warning"
@@ -148,7 +148,7 @@ def test_sarif_uri_is_percent_encoded(tmp_path):
 
 
 def test_excluded_directories_are_not_walked(tmp_path):
-    from slopcheck.engine import discover
+    from slopfence.engine import discover
 
     (tmp_path / "app.py").write_text("")
     for d in [".venv/lib", "node_modules/x", "pkg.egg-info"]:

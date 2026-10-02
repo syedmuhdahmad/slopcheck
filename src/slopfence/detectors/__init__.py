@@ -1,9 +1,9 @@
-from slopcheck.detectors.test_quality import (
+from slopfence.detectors.test_quality import (
     check_mock_only_tests,
     check_swallowed_assertions,
     check_trivial_assertions,
 )
-from slopcheck.detectors.text_patterns import check_chat_leftovers, check_placeholders
+from slopfence.detectors.text_patterns import check_chat_leftovers, check_placeholders
 
 # Per-file detectors that need nothing but the parsed source.
 FILE_DETECTORS = {

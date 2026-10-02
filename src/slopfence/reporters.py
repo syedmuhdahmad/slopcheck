@@ -5,9 +5,9 @@ from collections import Counter
 from itertools import groupby
 from urllib.parse import quote
 
-from slopcheck import __version__
-from slopcheck.engine import Result
-from slopcheck.models import RULES, Severity
+from slopfence import __version__
+from slopfence.engine import Result
+from slopfence.models import RULES, Severity
 
 _SEVERITY_ORDER = [Severity.HIGH, Severity.MEDIUM, Severity.LOW]
 _SARIF_LEVEL = {Severity.HIGH: "error", Severity.MEDIUM: "warning", Severity.LOW: "note"}
@@ -69,7 +69,7 @@ def sarif(result: Result) -> str:
             "id": rule.id,
             "name": rule.name,
             "shortDescription": {"text": rule.summary},
-            "helpUri": "https://github.com/syedmuhdahmad/slopcheck#planned-detectors",
+            "helpUri": "https://github.com/syedmuhdahmad/slopfence#planned-detectors",
             "defaultConfiguration": {"level": _SARIF_LEVEL[rule.severity]},
         }
         for rule in RULES.values()
@@ -102,9 +102,9 @@ def sarif(result: Result) -> str:
             {
                 "tool": {
                     "driver": {
-                        "name": "slopcheck",
+                        "name": "slopfence",
                         "version": __version__,
-                        "informationUri": "https://github.com/syedmuhdahmad/slopcheck",
+                        "informationUri": "https://github.com/syedmuhdahmad/slopfence",
                         "rules": rules,
                     }
                 },

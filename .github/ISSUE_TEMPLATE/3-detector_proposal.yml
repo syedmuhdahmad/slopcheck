@@ -1,5 +1,5 @@
 name: 💡 Detector proposal
-description: Propose a new pattern for slopcheck to detect
+description: Propose a new pattern for slopfence to detect
 labels: ["detector", "enhancement", "needs-triage"]
 body:
   - type: textarea

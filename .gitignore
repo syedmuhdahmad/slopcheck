@@ -7,5 +7,5 @@ build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-.slopcheck-cache/
+.slopfence-cache/
 .DS_Store

@@ -9,8 +9,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 
-from slopcheck.models import Finding
-from slopcheck.source import SourceFile
+from slopfence.models import Finding
+from slopfence.source import SourceFile
 
 PLACEHOLDER_PATTERNS = [
     re.compile(p, re.I)

@@ -1,4 +1,4 @@
-name: slopcheck
+name: slopfence
 description: Find the junk AI coding assistants leave behind (hallucinated packages, fake tests, placeholders, chat leftovers).
 author: syedmuhdahmad
 branding:
@@ -16,30 +16,30 @@ inputs:
       "none" always checks everything. Any other value is a git ref to diff against.
     default: "auto"
   args:
-    description: Extra arguments passed to slopcheck (e.g. "--ignore SLOP051").
+    description: Extra arguments passed to slopfence (e.g. "--ignore SLOP051").
     default: ""
   sarif-file:
     description: If set, also write a SARIF report to this path (for github/codeql-action/upload-sarif).
     default: ""
   version:
-    description: slopcheck version to install. Defaults to the version matching this action ref.
+    description: slopfence version to install. Defaults to the version matching this action ref.
     default: ""
 
 runs:
   using: composite
   steps:
-    - name: Install slopcheck
+    - name: Install slopfence
       shell: bash
       env:
-        SLOPCHECK_VERSION: ${{ inputs.version }}
+        SLOPFENCE_VERSION: ${{ inputs.version }}
       run: |
-        if [ -n "$SLOPCHECK_VERSION" ]; then
-          python3 -m pip install --quiet "slopcheck==$SLOPCHECK_VERSION"
+        if [ -n "$SLOPFENCE_VERSION" ]; then
+          python3 -m pip install --quiet "slopfence==$SLOPFENCE_VERSION"
         else
           python3 -m pip install --quiet "$GITHUB_ACTION_PATH"
         fi
 
-    - name: Run slopcheck
+    - name: Run slopfence
       shell: bash
       env:
         INPUT_PATHS: ${{ inputs.paths }}
@@ -63,8 +63,8 @@ runs:
         if [ -n "$diff_ref" ]; then diff_args=(--diff "$diff_ref"); fi
         # shellcheck disable=SC2086
         if [ -n "$INPUT_SARIF" ]; then
-          python3 -m slopcheck $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS \
+          python3 -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS \
             --format sarif --output "$INPUT_SARIF" --exit-zero
         fi
         # shellcheck disable=SC2086
-        python3 -m slopcheck $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS
+        python3 -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS

@@ -1,5 +1,5 @@
 name: 🎯 False positive
-description: slopcheck flagged code that is actually fine
+description: slopfence flagged code that is actually fine
 labels: ["false-positive", "needs-triage"]
 body:
   - type: markdown
@@ -30,6 +30,6 @@ body:
   - type: input
     id: version
     attributes:
-      label: slopcheck version
+      label: slopfence version
     validations:
       required: true

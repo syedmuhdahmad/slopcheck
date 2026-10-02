@@ -1,11 +1,11 @@
 name: 🐛 Bug report
-description: slopcheck crashed or behaved incorrectly
+description: slopfence crashed or behaved incorrectly
 labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! If slopcheck flagged code it shouldn't have, use the **False positive** template instead.
+        Thanks for reporting! If slopfence flagged code it shouldn't have, use the **False positive** template instead.
   - type: textarea
     id: what-happened
     attributes:
@@ -29,8 +29,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: slopcheck version
-      placeholder: "slopcheck --version"
+      label: slopfence version
+      placeholder: "slopfence --version"
     validations:
       required: true
   - type: input
