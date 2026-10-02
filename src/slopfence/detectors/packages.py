@@ -7,8 +7,11 @@ Two checks:
 * Imports in source code are opt-in (``check-imports``), because looking them
   up sends their names to PyPI and can reveal private package names. Even then
   they are only looked up when they are not stdlib, not part of the project,
-  not installed, not a declared dependency and not a well-known import name
-  whose package has a different name (``yaml`` -> ``PyYAML``).
+  not installed, and not provided by a declared or locked distribution
+  (``import yaml`` is provided by ``PyYAML``, see ``import_names``).
+
+Nothing is looked up when the project or the environment may install packages
+from a private index: a name missing from PyPI could then be a private package.
 """
 
 from __future__ import annotations
@@ -17,13 +20,15 @@ import ast
 import fnmatch
 import importlib.metadata
 import importlib.util
+import json
 import re
 import sys
-import urllib.parse
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from slopfence.detectors.import_names import IMPORT_NAMES, provides
+from slopfence.indexes import is_public_index, pipfile_is_private, uses_private_index
 from slopfence.models import Finding
 from slopfence.registry import OfflineRegistry, Registry, normalize
 from slopfence.source import IGNORE_FILE_RE, IGNORE_RE, SourceFile, read_source
@@ -33,70 +38,6 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-# Import names whose PyPI distribution is named differently.
-KNOWN_IMPORT_NAMES = {
-    "attr",
-    "bs4",
-    "cv2",
-    "Crypto",
-    "Cryptodome",
-    "dateutil",
-    "docx",
-    "dotenv",
-    "fitz",
-    "gi",
-    "git",
-    "google",
-    "jose",
-    "jwt",
-    "Levenshtein",
-    "magic",
-    "multipart",
-    "MySQLdb",
-    "OpenSSL",
-    "PIL",
-    "pkg_resources",
-    "pptx",
-    "psycopg2",
-    "pydantic_core",
-    "serial",
-    "skimage",
-    "sklearn",
-    "slugify",
-    "socketio",
-    "telegram",
-    "usb",
-    "win32api",
-    "win32con",
-    "win32com",
-    "pythoncom",
-    "pywintypes",
-    "wx",
-    "yaml",
-    "zmq",
-    "_pytest",
-    "pytest",
-    "setuptools",
-    "distutils",
-    "typing_extensions",
-    "six",
-    "grpc",
-    "Bio",
-    "ldap",
-    "nacl",
-    "OpenGL",
-    "sentry_sdk",
-    "rest_framework",
-    "jinja2",
-    "markdown",
-    "lxml",
-    "xdist",
-    "faiss",
-    "torch",
-    "torchvision",
-    "tensorflow",
-    "keras",
-}
 
 _REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _EGG = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
@@ -117,11 +58,18 @@ class Dependency:
     suppressed: bool = False
 
 
+LOCK_FILES = {"uv.lock", "poetry.lock", "pdm.lock", "Pipfile.lock", "Pipfile"}
+
+
 @dataclass
 class ProjectIndex:
     root: Path
     local_modules: set[str] = field(default_factory=set)
     dependencies: list[Dependency] = field(default_factory=list)
+    # Distributions named in lock files and Pipfiles (normalized), including indirect ones.
+    locked: set[str] = field(default_factory=set)
+    # Project files that let packages come from a non-PyPI index.
+    private_index_files: list[str] = field(default_factory=list)
 
     @property
     def declared(self) -> set[str]:
@@ -129,7 +77,13 @@ class ProjectIndex:
         return {normalize(d.name) for d in self.dependencies}
 
 
-def build_index(root: Path, py_files: Iterable[Path], dep_files: Iterable[Path]) -> ProjectIndex:
+def build_index(
+    root: Path,
+    py_files: Iterable[Path],
+    dep_files: Iterable[Path],
+    lock_files: Iterable[Path] = (),
+) -> ProjectIndex:
+    """Collect the project's own modules, its dependencies and its locked packages."""
     index = ProjectIndex(root=root)
     for path in py_files:
         index.local_modules.add(path.stem)
@@ -139,7 +93,55 @@ def build_index(root: Path, py_files: Iterable[Path], dep_files: Iterable[Path])
             index.local_modules.add(parent.name)
     for path in dep_files:
         index.dependencies.extend(parse_dependency_file(path, root))
+        if dependency_file_is_private(path):
+            index.private_index_files.append(_rel(path, root))
+    for path in lock_files:
+        names, private = parse_lock_file(path)
+        index.locked |= {normalize(n) for n in names}
+        if private:
+            index.private_index_files.append(_rel(path, root))
     return index
+
+
+def parse_lock_file(path: Path) -> tuple[set[str], bool]:
+    """Distribution names in a lock file or Pipfile, and whether it uses a private index.
+
+    Lock files list every installed package, including indirect dependencies a
+    project may import directly (``import idna`` with only ``requests`` declared).
+    """
+    text = read_source(path)
+    if text is None:
+        return set(), False
+    try:
+        if path.name == "Pipfile.lock":
+            data = json.loads(text)
+            meta = data.get("_meta", {}) if isinstance(data, dict) else {}
+            names = {n for group in ("default", "develop") for n in data.get(group, {})}
+            return names, pipfile_is_private({"source": meta.get("sources", [])})
+        data = tomllib.loads(text)
+    except (ValueError, AttributeError, TypeError):
+        return set(), False
+    if path.name == "Pipfile":
+        names = {n for group in ("packages", "dev-packages") for n in data.get(group, {}) or {}}
+        return names, pipfile_is_private(data)
+    # uv.lock, poetry.lock and pdm.lock all have [[package]] tables with a name.
+    packages = data.get("package", [])
+    names = {p["name"] for p in packages if isinstance(p, dict) and isinstance(p.get("name"), str)}
+    return names, False
+
+
+def dependency_file_is_private(path: Path) -> bool:
+    """Whether a requirements file or pyproject.toml lets any package come from a
+    non-PyPI index."""
+    text = read_source(path)
+    if text is None:
+        return False
+    if path.name == "pyproject.toml":
+        try:
+            return uses_private_index(tomllib.loads(text).get("tool", {}))
+        except tomllib.TOMLDecodeError:
+            return False
+    return _requirements_use_private_index(text.splitlines())
 
 
 def _rel(path: Path, root: Path) -> str:
@@ -198,6 +200,7 @@ def _requirements_comment(line: str) -> str:
 
 
 def parse_dependency_file(path: Path, root: Path) -> list[Dependency]:
+    """The dependencies declared in a requirements file or pyproject.toml."""
     text = read_source(path)
     if text is None:
         return []
@@ -218,13 +221,19 @@ def parse_dependency_file(path: Path, root: Path) -> list[Dependency]:
     return deps
 
 
-def _parse_requirements(text: str, rel: str) -> list[Dependency]:
-    lines = text.splitlines()
-    # With a non-PyPI index, a name missing from PyPI may be a private package.
-    private_index = any(
-        (m := _INDEX_OPTION.match(_REQ_COMMENT.sub("", line))) and not _is_public_index(m.group(1))
+def _requirements_use_private_index(lines: list[str]) -> bool:
+    """Whether a requirements file sets a non-PyPI ``--index-url`` or ``--extra-index-url``."""
+    return any(
+        (m := _INDEX_OPTION.match(_REQ_COMMENT.sub("", line))) and not is_public_index(m.group(1))
         for line in lines
     )
+
+
+def _parse_requirements(text: str, rel: str) -> list[Dependency]:
+    """Dependencies in a requirements file, with the line each one is on."""
+    lines = text.splitlines()
+    # With a non-PyPI index, a name missing from PyPI may be a private package.
+    private_index = _requirements_use_private_index(lines)
     deps = []
     for lineno, raw in enumerate(lines, start=1):
         suppressed = _suppresses_slop001(_requirements_comment(raw))
@@ -268,6 +277,7 @@ class _LineFinder:
     """Find the physical line of each dependency entry within its own TOML table."""
 
     def __init__(self, text: str) -> None:
+        """``private_index`` says where the environment configures a non-PyPI index, if anywhere."""
         self.lines = text.splitlines()
         self.comments = toml_comments(text)
         self.ranges = _table_ranges(self.lines)
@@ -328,51 +338,8 @@ class _LineFinder:
         return 0 < line <= len(self.comments) and _suppresses_slop001(self.comments[line - 1])
 
 
-PUBLIC_INDEX_HOSTS = ("pypi.org", "pythonhosted.org")
-
-
-def _is_public_index(url: object) -> bool:
-    """Whether an index URL points at PyPI itself (by host, not substring)."""
-    if not isinstance(url, str):
-        return False
-    try:
-        host = (urllib.parse.urlsplit(url.strip()).hostname or "").lower()
-    except ValueError:
-        return False
-    return any(host == h or host.endswith("." + h) for h in PUBLIC_INDEX_HOSTS)
-
-
-def _uses_private_index(tool: dict) -> bool:
-    """Whether Poetry or uv may install any dependency from a non-PyPI index.
-
-    Then a name that's missing from PyPI may be a private package, so it must
-    neither be reported nor sent to PyPI.
-    """
-    poetry_sources = tool.get("poetry", {}).get("source", [])
-    for source in poetry_sources if isinstance(poetry_sources, list) else []:
-        # Only "explicit" sources are limited to dependencies that name them (handled
-        # per dependency); primary, supplemental and the legacy kinds serve any package.
-        if (
-            isinstance(source, dict)
-            and source.get("priority") != "explicit"
-            and not _is_public_index(source.get("url"))
-        ):
-            return True
-    uv = tool.get("uv", {})
-    indexes = uv.get("index", [])
-    for index in indexes if isinstance(indexes, list) else []:
-        if (
-            isinstance(index, dict)
-            and not index.get("explicit")
-            and not _is_public_index(index.get("url"))
-        ):
-            return True
-    extra = uv.get("extra-index-url", [])
-    urls = [uv.get("index-url"), *(extra if isinstance(extra, list) else [extra])]
-    return any(url is not None and not _is_public_index(url) for url in urls)
-
-
 def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
+    """Dependencies in pyproject.toml: PEP 621, dependency groups and Poetry tables."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
@@ -383,9 +350,10 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
     project_name = normalize(project["name"]) if isinstance(project.get("name"), str) else None
     tool = data.get("tool", {})
     uv_sources = {normalize(n) for n in tool.get("uv", {}).get("sources", {})}
-    private_index = _uses_private_index(tool)
+    private_index = uses_private_index(tool)
 
     def add_spec(table: str, array: str, spec: object) -> None:
+        """Record one PEP 508 requirement string from ``table.array``."""
         if not isinstance(spec, str) or not (m := _REQ_NAME.match(spec)):
             return
         name = m.group(1)
@@ -457,18 +425,35 @@ def _is_installed(name: str, installed: set[str]) -> bool:
 
 
 class PackageChecker:
+    """Looks up dependencies and imports on PyPI and reports the ones that don't exist."""
+
     def __init__(
-        self, index: ProjectIndex, registry: Registry, known_packages: Iterable[str] = ()
+        self,
+        index: ProjectIndex,
+        registry: Registry,
+        known_packages: Iterable[str] = (),
+        private_index: str | None = None,
     ) -> None:
         self.index = index
         self.registry = registry
         # Private/internal packages the user vouches for; globs allowed ("corp-*").
         self._known = [normalize(p) for p in known_packages]
+        # Where the environment configures a non-PyPI index (pip.conf, PIP_INDEX_URL...).
+        self.private_index = private_index
         self._installed = _installed_modules()
-        self._declared = index.declared
+        self._provided_by = index.declared | index.locked
         self._missing: dict[str, bool] = {}
 
+    @property
+    def imports_may_be_private(self) -> bool:
+        """Whether any package may come from a private index, so unknown imports
+        could be private packages and must not be sent to PyPI."""
+        return bool(self.private_index or self.index.private_index_files)
+
     def check_dependencies(self, only_paths: set[str] | None = None) -> Iterator[Finding]:
+        """Report declared dependencies that don't exist on PyPI."""
+        if self.private_index:
+            return
         for dep in self.index.dependencies:
             if only_paths is not None and dep.path not in only_paths:
                 continue
@@ -488,14 +473,15 @@ class PackageChecker:
         return any(fnmatch.fnmatchcase(key, pattern) for pattern in self._known)
 
     def _should_lookup(self, name: str) -> bool:
+        """Whether an import needs a PyPI lookup: nothing local, installed or declared has it."""
         return not (
             self._is_known(name)
             or name in sys.stdlib_module_names
             or name == "__future__"
             or name in sys.builtin_module_names
             or name in self.index.local_modules
-            or name in KNOWN_IMPORT_NAMES
-            or normalize(name) in self._declared
+            or name in IMPORT_NAMES
+            or any(provides(dist, name) for dist in self._provided_by)
             or _is_installed(name, self._installed)
         )
 
@@ -510,7 +496,8 @@ class PackageChecker:
         return self._missing[name]
 
     def check_imports(self, src: SourceFile) -> Iterator[Finding]:
-        if isinstance(self.registry, OfflineRegistry):
+        """Report imports that no installed, declared or PyPI package provides."""
+        if isinstance(self.registry, OfflineRegistry) or self.imports_may_be_private:
             return
         for name, node in _top_level_imports(src.tree):
             if self._is_missing(name):

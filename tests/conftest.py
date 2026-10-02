@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import textwrap
 from collections.abc import Callable
 from pathlib import Path
@@ -24,6 +25,26 @@ class FakeRegistry:
 
         self.queries.append(name)
         return normalize(name) in self.existing
+
+
+INDEX_ENV_VARS = (
+    "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "UV_INDEX",
+    "UV_DEFAULT_INDEX",
+    "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_CONFIG_FILE",
+)
+
+
+@pytest.fixture(autouse=True)
+def no_index_config(monkeypatch):
+    """Keep the machine's pip/uv index settings (pip.conf, PIP_INDEX_URL...) out of tests."""
+    for var in INDEX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("PIP_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("UV_NO_CONFIG", "1")
 
 
 @pytest.fixture
