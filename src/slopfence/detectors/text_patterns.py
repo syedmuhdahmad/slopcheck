@@ -22,7 +22,8 @@ PLACEHOLDER_PATTERNS = [
         # "for demo purposes" alone is common in human docs (nltk: "A Scorer for Demo
         # Purposes"); only flag it with "only" or next to placeholder wording.
         r"\bfor (demo|demonstration|illustration|example) purposes only\b",
-        r"\b(simplified|hard-?coded|fake|dummy|mock|placeholder|stub|static)\b.{0,40}"
+        # Same sentence only: the gap can't cross ".", "!" or "?".
+        r"\b(simplified|hard-?coded|fake|dummy|mock|placeholder|stub|static)\b[^.!?]{0,40}"
         r"\bfor (demo|demonstration|illustration|example) purposes\b",
         r"\b(placeholder|stub) (implementation|logic|code)\b",
         r"\b(replace|swap) (this|it) with (your|the|an?) (actual|real|own)\b",

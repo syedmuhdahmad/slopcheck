@@ -37,6 +37,9 @@ def test_placeholder_flagged(write, check, comment):
         # nltk (#20): human docs that mention demos.
         "# We do this here just for demo purposes. If the",
         "# A Scorer for Demo Purposes",
+        # Placeholder word and demo phrase in different sentences (Copilot review on #31).
+        "# Static configuration is documented. Used for demo purposes.",
+        "# Uses a mock server! Kept for demo purposes",
     ],
 )
 def test_placeholder_not_flagged(write, check, comment):
