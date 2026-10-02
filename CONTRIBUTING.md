@@ -61,6 +61,12 @@ slopfence src tests              # slopfence must pass on its own code
 npx markdownlint-cli2 "**/*.md" "!.venv/**"
 ```
 
+If you change `.pre-commit-hooks.yaml`, also run the end-to-end hook test (needs `pip install pre-commit`):
+
+```bash
+.github/scripts/test-pre-commit-hook.sh .
+```
+
 ### Adding a detector
 
 1. Add the rule to `RULES` in `src/slopfence/models.py`.

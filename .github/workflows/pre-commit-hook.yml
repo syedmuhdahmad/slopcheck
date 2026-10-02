@@ -1,0 +1,29 @@
+name: pre-commit hook
+
+# End-to-end test of .pre-commit-hooks.yaml using pre-commit itself.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit-hook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install pre-commit
+      - name: Run hook end-to-end
+        run: .github/scripts/test-pre-commit-hook.sh "$GITHUB_WORKSPACE"
