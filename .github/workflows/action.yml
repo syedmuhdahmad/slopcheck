@@ -1,0 +1,142 @@
+name: GitHub Action
+
+# End-to-end test of action.yml on a throwaway project with known slop.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action:
+    name: action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The action lives in a subfolder; the workspace root becomes the fixture project.
+      - uses: actions/checkout@v7
+        with:
+          path: slopfence-src
+          persist-credentials: false
+
+      - name: Create fixture project
+        run: |
+          git init -q -b main
+          git config user.email ci@example.com
+          git config user.name ci
+          echo "slopfence-src/" > .gitignore
+          mkdir -p src tests clean
+          # Old slop already on main: reported by full scans, not by diff scans.
+          printf '# In a real implementation, use the cache\nx = 1\n' > src/app.py
+          printf 'requests>=2\n' > requirements.txt
+          printf 'import json\n\n\ndef load(p):\n    return json.loads(p)\n' > clean/ok.py
+          git add -A && git commit -qm base
+          git init -q --bare "$RUNNER_TEMP/origin.git"
+          git remote add origin "$RUNNER_TEMP/origin.git"
+          git push -q origin main
+          # New slop on a feature branch.
+          git switch -q -c feature
+          printf '# I hope this helps with the café menu!\n' >> src/app.py
+          printf 'flask-jwt-simple-auth\n' >> requirements.txt
+          printf 'from unittest.mock import Mock\n\n\ndef test_user():\n    user = Mock()\n    user.name = "x"\n    assert user.name == "x"\n' > tests/test_app.py
+          git add -A && git commit -qm feature
+
+      - name: "diff: none (full scan, SARIF)"
+        id: full
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          diff: none
+          sarif-file: full.sarif
+
+      - name: "diff: explicit ref"
+        id: ref
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          diff: origin/main
+          sarif-file: ref.sarif
+
+      - name: "diff: auto"
+        id: auto
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          sarif-file: auto.sarif
+
+      - name: Clean project passes
+        id: clean
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: clean
+          diff: none
+
+      # Only for the checker below; the action steps above use the runner's own Python.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Check outcomes and SARIF
+        env:
+          FULL: ${{ steps.full.outcome }}
+          REF: ${{ steps.ref.outcome }}
+          AUTO: ${{ steps.auto.outcome }}
+          CLEAN: ${{ steps.clean.outcome }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json, os, sys
+
+          errors = []
+
+          def expect(cond, msg):
+              print(("ok   - " if cond else "FAIL - ") + msg)
+              if not cond:
+                  errors.append(msg)
+
+          def findings(name):
+              doc = json.load(open(name, encoding="utf-8"))
+              expect(doc["version"] == "2.1.0", f"{name} is SARIF 2.1.0")
+              expect(doc["runs"][0]["tool"]["driver"]["name"] == "slopfence", f"{name} tool name")
+              return {
+                  (r["ruleId"], r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+                  for r in doc["runs"][0]["results"]
+              }
+
+          new = {("SLOP001", "requirements.txt"), ("SLOP020", "tests/test_app.py"), ("SLOP051", "src/app.py")}
+          old = ("SLOP010", "src/app.py")
+
+          expect(os.environ["FULL"] == "failure", "full scan fails the step")
+          expect(os.environ["REF"] == "failure", "explicit-ref scan fails the step")
+          expect(os.environ["AUTO"] == "failure", "auto scan fails the step")
+          expect(os.environ["CLEAN"] == "success", "clean project passes")
+
+          full = findings("full.sarif")
+          expect(full == new | {old}, f"full scan finds old and new slop: {sorted(full)}")
+          ref = findings("ref.sarif")
+          expect(ref == new, f"explicit ref reports only new slop: {sorted(ref)}")
+          auto = findings("auto.sarif")
+          if os.environ["EVENT"] == "pull_request":
+              expect(auto == new, f"auto on a PR reports only new slop: {sorted(auto)}")
+          else:
+              expect(auto == new | {old}, f"auto outside a PR scans everything: {sorted(auto)}")
+
+          sys.exit(1 if errors else 0)
+          PY
