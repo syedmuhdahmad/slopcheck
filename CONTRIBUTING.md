@@ -50,13 +50,23 @@ New here? Look for issues labelled [`good first issue`](https://github.com/syedm
 
 ## Local checks
 
-> The Python codebase hasn't landed yet. This section will be updated with setup and test commands once v0.1 code exists.
-
-For now, docs changes are checked with markdownlint:
-
 ```bash
-npx markdownlint-cli2 "**/*.md"
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e '.[dev]'
+
+pytest                           # tests
+ruff check . && ruff format --check .
+slopcheck src tests              # slopcheck must pass on its own code
+npx markdownlint-cli2 "**/*.md" "!.venv/**"
 ```
+
+### Adding a detector
+
+1. Add the rule to `RULES` in `src/slopcheck/models.py`.
+2. Write the detector in `src/slopcheck/detectors/` and register it in `detectors/__init__.py`.
+3. Add tests with **both** flagged and not-flagged cases. Real-world code that must stay quiet is the most valuable test.
+4. Run it against a large codebase (for example your Python install's standard library) and check for false positives before opening the pull request.
 
 ## Commit and pull request style
 

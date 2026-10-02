@@ -4,9 +4,83 @@
 
 slopcheck finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers) before it gets merged.
 
-> 🚧 **Status: early design / pre-alpha.** This README describes the problem and the plan. Code is coming. Feedback and ideas are very welcome. See [Contributing](#contributing).
+> 🚧 **Status: alpha (v0.1, Python only).** The first detectors work and are tested against 20,000+ files of real-world code for false positives. Expect rough edges. Feedback is very welcome. See [Contributing](#contributing).
 
 ---
+
+## Quick start
+
+Install from source (a PyPI release is coming):
+
+```bash
+pip install git+https://github.com/syedmuhdahmad/slopcheck
+```
+
+Check a project:
+
+```bash
+slopcheck .
+```
+
+Check only what your branch changed (ideal for pull requests):
+
+```bash
+slopcheck --diff main
+```
+
+### Options
+
+| Option | What it does |
+|---|---|
+| `--diff REF` | Only report issues on lines changed since `REF` (plus new untracked files) |
+| `--format text\|json\|sarif` | Output format. SARIF shows findings inline on GitHub pull requests |
+| `-o, --output FILE` | Write the report to a file |
+| `--offline` | Skip PyPI lookups (disables `SLOP001`) |
+| `--select` / `--ignore` | Comma-separated rule IDs to run or skip, e.g. `--ignore SLOP051` |
+| `--exit-zero` | Always exit 0 (report only) |
+| `--list-rules` | Show all rules |
+
+Exit codes: `0` no issues, `1` issues found, `2` error.
+
+### Ignoring a finding
+
+```python
+# In a real implementation, use the cache.  # slopcheck: ignore[SLOP010]
+x = legacy()  # slopcheck: ignore
+```
+
+Put `# slopcheck: ignore-file` anywhere in a file to skip it. In `requirements.txt`, add `# slopcheck: ignore` to a line.
+
+### GitHub Action
+
+```yaml
+# .github/workflows/slopcheck.yml
+name: slopcheck
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  slopcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: syedmuhdahmad/slopcheck@main
+```
+
+On pull requests it automatically checks only the changed lines. To show findings inline on the pull request, set `sarif-file: slopcheck.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
+
+### pre-commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/syedmuhdahmad/slopcheck
+    rev: main
+    hooks:
+      - id: slopcheck
+```
 
 ## The problem
 
@@ -68,23 +142,23 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopche
 4. **Low false positives over high recall.** A noisy linter gets uninstalled. Start strict, flag only obvious cases, and make everything configurable.
 5. **Fits existing workflows.** CLI, pre-commit hook, GitHub Action, and SARIF output for GitHub code scanning.
 
-## Planned detectors
+## Detectors
 
-| ID | Detector | Severity |
-|---|---|---|
-| `SLOP001` | Import of a package that doesn't exist on PyPI / npm | 🔴 High |
-| `SLOP002` | Dependency that is very new or has suspiciously few downloads (slopsquatting risk) | 🔴 High |
-| `SLOP010` | Placeholder / stub comment (`In a real implementation…`, `Simplified for demo`) | 🟠 Medium |
-| `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium |
-| `SLOP020` | Test that only asserts on its own mocks | 🔴 High |
-| `SLOP021` | Test with no meaningful assertion (`assert True`, `toBeDefined()` only) | 🟠 Medium |
-| `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High |
-| `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium |
-| `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low |
-| `SLOP050` | Comment that only restates the code | 🟡 Low |
-| `SLOP051` | Leftover chat text in code (`Certainly! Here's…`) | 🟠 Medium |
+| ID | Detector | Severity | Status |
+|---|---|---|---|
+| `SLOP001` | Import of a package that doesn't exist on PyPI / npm | 🔴 High | ✅ v0.1 (Python) |
+| `SLOP002` | Dependency that is very new or has suspiciously few downloads (slopsquatting risk) | 🔴 High | Planned |
+| `SLOP010` | Placeholder / stub comment (`In a real implementation…`, `Simplified for demo`) | 🟠 Medium | ✅ v0.1 |
+| `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium | Planned |
+| `SLOP020` | Test that only asserts on its own mocks | 🔴 High | ✅ v0.1 |
+| `SLOP021` | Test with no meaningful assertion (`assert True`, `toBeDefined()` only) | 🟠 Medium | ✅ v0.1 |
+| `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High | ✅ v0.1 |
+| `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium | Planned |
+| `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low | Planned |
+| `SLOP050` | Comment that only restates the code | 🟡 Low | Planned |
+| `SLOP051` | Leftover chat text in code (`Certainly! Here's…`) | 🟠 Medium | ✅ v0.1 |
 
-## What it will look like
+## Example output
 
 ```text
 $ slopcheck --diff main
@@ -96,18 +170,18 @@ src/auth.py
 tests/test_user.py
   20:5   SLOP020  Test only asserts on its own Mock - doesn't test real code               🔴
 
-src/utils/dates.py
-  5:1    SLOP030  'format_date' is 94% similar to 'formatDate' in src/helpers.py:31        🟠
+tests/test_billing.py
+  31:5   SLOP022  Test 'test_refund' catches assertion failures without re-raising, so it can never fail  🔴
 
-4 issues (2 high, 2 medium)
+4 issues (3 high, 1 medium)
 ```
 
-## Architecture (planned)
+## Architecture
 
 ```text
 ┌─────────────┐   ┌──────────────┐   ┌──────────────┐   ┌───────────────┐
 │   Files /   │──▶│    Parser    │──▶│  Rule engine │──▶│   Reporter    │
-│   git diff  │   │ (tree-sitter)│   │  (detectors) │   │ CLI/JSON/SARIF│
+│   git diff  │   │ (ast / t-s)  │   │  (detectors) │   │ CLI/JSON/SARIF│
 └─────────────┘   └──────────────┘   └──────┬───────┘   └───────────────┘
                                             │
                                   ┌─────────▼─────────┐
@@ -119,8 +193,8 @@ src/utils/dates.py
                                   └───────────────────┘
 ```
 
-- **tree-sitter** for parsing, so new languages are added without rewriting the detectors.
-- **Registry lookups** cached locally to stay fast and avoid rate limits.
+- **Parser:** v0.1 uses Python's built-in `ast` and `tokenize` (no dependencies). **tree-sitter** is planned so new languages can be added without rewriting the detectors.
+- **Registry lookups** are cached locally (`~/.cache/slopcheck`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing".
 - **Optional LLM mode** sends only the unclear cases for a second opinion. Never required.
 
 ## Challenges (and how we plan to handle them)
@@ -140,19 +214,21 @@ src/utils/dates.py
 
 ### v0.1 (MVP): Python
 
-- [ ] CLI: `slopcheck .` and `slopcheck --diff <branch>`
-- [ ] `SLOP001` invented packages (PyPI)
-- [ ] `SLOP010` placeholder comments
-- [ ] `SLOP020` / `SLOP021` fake tests
-- [ ] `SLOP051` leftover chat text
-- [ ] JSON and SARIF output
-- [ ] GitHub Action
+- [x] CLI: `slopcheck .` and `slopcheck --diff <branch>`
+- [x] `SLOP001` packages that don't exist on PyPI (dependency files and imports)
+- [x] `SLOP010` placeholder comments
+- [x] `SLOP020` / `SLOP021` / `SLOP022` fake tests
+- [x] `SLOP051` leftover chat text
+- [x] Ignore comments
+- [x] JSON and SARIF output
+- [x] GitHub Action and pre-commit hook
+- [ ] Publish to PyPI
 
 ### v0.2
 
-- [ ] Config file (`.slopcheck.toml`) and ignore comments
+- [ ] Config file (`[tool.slopcheck]` in `pyproject.toml`)
 - [ ] Near-duplicate detection (`SLOP030`)
-- [ ] pre-commit hook
+- [ ] Parallel processing for very large repos
 
 ### Later
 

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "slopcheck"
+dynamic = ["version"]
+description = "A fast, deterministic quality gate for AI-assisted code: catches hallucinated packages, fake tests, placeholder stubs and chat leftovers."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "syedmuhdahmad" }]
+keywords = ["linter", "ai", "llm", "code-quality", "static-analysis", "supply-chain-security"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Security",
+]
+dependencies = [
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+slopcheck = "slopcheck.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/syedmuhdahmad/slopcheck"
+Issues = "https://github.com/syedmuhdahmad/slopcheck/issues"
+
+[tool.hatch.version]
+path = "src/slopcheck/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/slopcheck"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

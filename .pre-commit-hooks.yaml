@@ -1,0 +1,8 @@
+- id: slopcheck
+  name: slopcheck
+  description: Find the junk AI coding assistants leave behind.
+  entry: slopcheck
+  language: python
+  types_or: [python, toml, text]
+  files: (\.py|requirements.*\.txt|pyproject\.toml)$
+  require_serial: true
