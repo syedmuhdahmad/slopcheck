@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from collections.abc import Sequence
@@ -56,7 +57,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _use_utf8_output() -> None:
+    """Write UTF-8 even where Python defaults to a legacy code page (Windows CI pipes).
+
+    Otherwise a finding that quotes an emoji or other non-cp1252 text crashes the run.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("_", "-")
+        if encoding not in ("utf-8", "utf8") and hasattr(stream, "reconfigure"):
+            with contextlib.suppress(ValueError, OSError):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _use_utf8_output()
     args = build_parser().parse_args(argv)
 
     if args.list_rules:

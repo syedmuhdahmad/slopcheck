@@ -29,15 +29,34 @@ runs:
   using: composite
   steps:
     - name: Install slopfence
+      id: install
       shell: bash
       env:
         SLOPFENCE_VERSION: ${{ inputs.version }}
       run: |
-        if [ -n "$SLOPFENCE_VERSION" ]; then
-          python3 -m pip install --quiet "slopfence==$SLOPFENCE_VERSION"
-        else
-          python3 -m pip install --quiet "$GITHUB_ACTION_PATH"
+        # Use a private virtualenv: system Pythons on recent runners reject
+        # `pip install` (PEP 668), and Windows usually has no `python3`.
+        py=""
+        for candidate in python3 python; do
+          if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c "import sys; sys.exit(sys.version_info < (3, 10))" >/dev/null 2>&1; then
+            py="$candidate"
+            break
+          fi
+        done
+        if [ -z "$py" ]; then
+          echo "::error::slopfence needs Python 3.10+ on the runner (add actions/setup-python first)"
+          exit 1
         fi
+        venv="$RUNNER_TEMP/slopfence-venv"
+        "$py" -m venv "$venv"
+        if [ -x "$venv/bin/python" ]; then bin="$venv/bin"; else bin="$venv/Scripts"; fi
+        if [ -n "$SLOPFENCE_VERSION" ]; then
+          "$bin/python" -m pip install --quiet --disable-pip-version-check "slopfence==$SLOPFENCE_VERSION"
+        else
+          "$bin/python" -m pip install --quiet --disable-pip-version-check "$GITHUB_ACTION_PATH"
+        fi
+        echo "python=$bin/python" >> "$GITHUB_OUTPUT"
 
     - name: Run slopfence
       shell: bash
@@ -47,6 +66,7 @@ runs:
         INPUT_ARGS: ${{ inputs.args }}
         INPUT_SARIF: ${{ inputs.sarif-file }}
         BASE_REF: ${{ github.base_ref }}
+        PY: ${{ steps.install.outputs.python }}
       run: |
         case "$INPUT_DIFF" in
           auto)
@@ -63,8 +83,8 @@ runs:
         if [ -n "$diff_ref" ]; then diff_args=(--diff "$diff_ref"); fi
         # shellcheck disable=SC2086
         if [ -n "$INPUT_SARIF" ]; then
-          python3 -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS \
+          "$PY" -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS \
             --format sarif --output "$INPUT_SARIF" --exit-zero
         fi
         # shellcheck disable=SC2086
-        python3 -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS
+        "$PY" -m slopfence $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS

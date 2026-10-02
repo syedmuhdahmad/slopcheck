@@ -1,0 +1,245 @@
+name: GitHub Action
+
+# End-to-end test of action.yml on a throwaway project with known slop.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action:
+    name: action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The action lives in a subfolder; the workspace root becomes the fixture project.
+      - uses: actions/checkout@v7
+        with:
+          path: slopfence-src
+          persist-credentials: false
+
+      # Pin PyPI answers so results don't depend on the live registry (an outage would
+      # hide SLOP001; someone registering the fake name would remove it).
+      - name: Pin PyPI answers in the slopfence cache
+        run: |
+          dir="$RUNNER_TEMP/slopfence-cache"
+          mkdir -p "$dir/slopfence"
+          now=$(date +%s)
+          printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s]}\n' "$now" "$now" > "$dir/slopfence/pypi.json"
+          echo "SLOPFENCE_CACHE_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Create fixture project
+        run: |
+          git init -q -b main
+          git config user.email ci@example.com
+          git config user.name ci
+          echo "slopfence-src/" > .gitignore
+          mkdir -p src tests clean
+          # Old slop already on main: reported by full scans, not by diff scans.
+          printf '# In a real implementation, use the cache\nx = 1\n' > src/app.py
+          printf 'requests>=2\n' > requirements.txt
+          printf 'import json\n\n\ndef load(p):\n    return json.loads(p)\n' > clean/ok.py
+          git add -A && git commit -qm base
+          git init -q --bare "$RUNNER_TEMP/origin.git"
+          git remote add origin "$RUNNER_TEMP/origin.git"
+          git push -q origin main
+          # New slop on a feature branch.
+          git switch -q -c feature
+          printf '# I hope this helps! \xe2\x9c\x85 caf\xc3\xa9\n' >> src/app.py
+          printf 'flask-jwt-simple-auth\n' >> requirements.txt
+          printf 'from unittest.mock import Mock\n\n\ndef test_user():\n    user = Mock()\n    user.name = "x"\n    assert user.name == "x"\n' > tests/test_app.py
+          git add -A && git commit -qm feature
+
+      - name: "diff: none (full scan, SARIF)"
+        id: full
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          diff: none
+          sarif-file: full.sarif
+
+      - name: "diff: explicit ref"
+        id: ref
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          diff: origin/main
+          sarif-file: ref.sarif
+
+      - name: "diff: auto"
+        id: auto
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: src tests requirements.txt
+          sarif-file: auto.sarif
+
+      - name: Clean project passes
+        id: clean
+        continue-on-error: true
+        uses: ./slopfence-src
+        with:
+          paths: clean
+          diff: none
+
+      - name: Text output survives non-ASCII on this platform
+        run: |
+          venv="$RUNNER_TEMP/slopfence-venv"
+          if [ -x "$venv/bin/python" ]; then py="$venv/bin/python"; else py="$venv/Scripts/python"; fi
+          status=0
+          "$py" -m slopfence src --offline --no-color > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          [ "$status" -eq 1 ] || { echo "::error::expected exit 1 (findings), got $status"; exit 1; }
+          if grep -q Traceback err.txt; then echo "::error::slopfence crashed"; exit 1; fi
+          grep -q "$(printf 'caf\xc3\xa9')" out.txt || { echo "::error::output is not UTF-8"; exit 1; }
+
+      # Only for the checker below; the action steps above use the runner's own Python.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Check outcomes and SARIF
+        env:
+          FULL: ${{ steps.full.outcome }}
+          REF: ${{ steps.ref.outcome }}
+          AUTO: ${{ steps.auto.outcome }}
+          CLEAN: ${{ steps.clean.outcome }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json, os, sys
+
+          errors = []
+
+          def expect(cond, msg):
+              print(("ok   - " if cond else "FAIL - ") + msg)
+              if not cond:
+                  errors.append(msg)
+
+          def findings(name):
+              doc = json.load(open(name, encoding="utf-8"))
+              expect(doc["version"] == "2.1.0", f"{name} is SARIF 2.1.0")
+              expect(doc["runs"][0]["tool"]["driver"]["name"] == "slopfence", f"{name} tool name")
+              return {
+                  (r["ruleId"], r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+                  for r in doc["runs"][0]["results"]
+              }
+
+          new = {("SLOP001", "requirements.txt"), ("SLOP020", "tests/test_app.py"), ("SLOP051", "src/app.py")}
+          old = ("SLOP010", "src/app.py")
+
+          expect(os.environ["FULL"] == "failure", "full scan fails the step")
+          expect(os.environ["REF"] == "failure", "explicit-ref scan fails the step")
+          expect(os.environ["AUTO"] == "failure", "auto scan fails the step")
+          expect(os.environ["CLEAN"] == "success", "clean project passes")
+
+          full = findings("full.sarif")
+          expect(full == new | {old}, f"full scan finds old and new slop: {sorted(full)}")
+          ref = findings("ref.sarif")
+          expect(ref == new, f"explicit ref reports only new slop: {sorted(ref)}")
+          auto = findings("auto.sarif")
+          if os.environ["EVENT"] == "pull_request":
+              expect(auto == new, f"auto on a PR reports only new slop: {sorted(auto)}")
+          else:
+              expect(auto == new | {old}, f"auto outside a PR scans everything: {sorted(auto)}")
+
+          sys.exit(1 if errors else 0)
+          PY
+
+  # Uploads a real SARIF report to code scanning. It also runs on main so PRs have a
+  # baseline: the fixture's alerts on main are dismissed as "used in tests", so PRs
+  # only show genuinely new findings. Fork PRs are skipped (their tokens can't
+  # write security events).
+  sarif-upload:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pin PyPI answers so results don't depend on the live registry (an outage would
+      # hide SLOP001; someone registering the fake name would remove it).
+      - name: Pin PyPI answers in the slopfence cache
+        run: |
+          dir="$RUNNER_TEMP/slopfence-cache"
+          mkdir -p "$dir/slopfence"
+          now=$(date +%s)
+          printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s]}\n' "$now" "$now" > "$dir/slopfence/pypi.json"
+          echo "SLOPFENCE_CACHE_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Scan the committed fixture project
+        id: scan
+        continue-on-error: true
+        uses: ./
+        with:
+          paths: .github/action-fixture
+          diff: none
+          sarif-file: slopfence.sarif
+
+      - name: SARIF paths point at files in this repository
+        env:
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          from urllib.parse import unquote
+
+          assert os.environ["OUTCOME"] == "failure", "scan should fail on the fixture"
+          results = json.load(open("slopfence.sarif"))["runs"][0]["results"]
+          found = set()
+          for r in results:
+              uri = unquote(r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+              assert Path(uri).is_file(), f"SARIF uri {uri!r} is not a file in the repo"
+              found.add((r["ruleId"], uri))
+          expected = {
+              ("SLOP001", ".github/action-fixture/requirements.txt"),
+              ("SLOP010", ".github/action-fixture/src/app.py"),
+              ("SLOP020", ".github/action-fixture/tests/test_app.py"),
+          }
+          print(sorted(found))
+          sys.exit(0 if found == expected else f"expected {sorted(expected)}")
+          PY
+
+      - name: Upload to code scanning
+        id: upload
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slopfence.sarif
+          category: slopfence-action-test
+
+      - name: Code scanning received the analysis
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.upload.outputs.sarif-id }}
+          ANALYSIS_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/sarifs/$SARIF_ID" --jq .processing_status)
+          echo "processing status: $status"
+          [ "$status" = "complete" ] || { echo "::error::SARIF upload not processed ($status)"; exit 1; }
+          count=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$ANALYSIS_REF&tool_name=slopfence" --jq 'length')
+          echo "slopfence analyses on $ANALYSIS_REF: $count"
+          [ "$count" -ge 1 ] || { echo "::error::no slopfence analysis found for $ANALYSIS_REF"; exit 1; }
