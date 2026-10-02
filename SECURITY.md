@@ -1,0 +1,50 @@
+# Security Policy
+
+slopcheck is partly a **supply-chain security tool** (it detects hallucinated and slopsquatted packages), so we take security reports seriously.
+
+## Supported versions
+
+slopcheck is pre-release. Until v1.0, only the latest release and `main` receive security fixes.
+
+| Version | Supported |
+|---|---|
+| latest release | ✅ |
+| `main` | ✅ |
+| older releases | ❌ |
+
+## Reporting a vulnerability
+
+**Please do not report security vulnerabilities through public issues, discussions, or pull requests.**
+
+Report privately using GitHub's private vulnerability reporting:
+
+👉 **[Report a vulnerability](https://github.com/syedmuhdahmad/slopcheck/security/advisories/new)**
+
+Please include:
+
+- A description of the issue and its impact
+- Steps to reproduce, or a proof of concept
+- Affected versions or commits
+- Any suggested fix, if you have one
+
+## What to expect
+
+| Step | Target time |
+|---|---|
+| Acknowledgement of your report | within 3 business days |
+| Initial assessment | within 7 days |
+| Fix or mitigation plan | depends on severity; we'll keep you updated |
+
+We'll coordinate disclosure with you, publish a GitHub Security Advisory once a fix is released, and credit you unless you prefer to stay anonymous.
+
+## Scope
+
+Examples of issues we want to hear about:
+
+- slopcheck executing, importing, or installing code from the project it scans
+- Registry lookups that can be abused (e.g. leaking private package names to public registries without opt-in)
+- Cache poisoning that makes a malicious package appear safe
+- A detector bypass that lets a known-malicious package pass as safe
+- Vulnerabilities in our GitHub Action or release pipeline
+
+Out of scope: detectors that miss a code-quality pattern (please open a normal issue instead).

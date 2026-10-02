@@ -1,0 +1,6 @@
+# Default owner for everything in the repo.
+# Owners are automatically requested for review on pull requests.
+* @syedmuhdahmad
+
+# Repo settings, CI and community files
+/.github/ @syedmuhdahmad

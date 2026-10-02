@@ -1,0 +1,36 @@
+name: 🤖 AI junk example
+description: Share a real example of junk an AI coding tool produced
+labels: ["example", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Real examples are the most valuable input for designing detectors. Please remove anything private or proprietary.
+  - type: input
+    id: tool
+    attributes:
+      label: Which AI tool produced it? (optional)
+      placeholder: "Copilot, Claude, Cursor, …"
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options:
+        - Python
+        - JavaScript / TypeScript
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong with it?
+    validations:
+      required: true

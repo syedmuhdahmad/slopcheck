@@ -1,0 +1,39 @@
+name: 💡 Detector proposal
+description: Propose a new pattern for slopcheck to detect
+labels: ["detector", "enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: pattern
+    attributes:
+      label: What pattern should be detected?
+      description: Describe the junk pattern in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: should-flag
+    attributes:
+      label: Code that SHOULD be flagged
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: should-not-flag
+    attributes:
+      label: Similar code that should NOT be flagged
+      description: Helps us avoid false positives.
+      render: python
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suggested severity
+      options:
+        - High (security risk or broken behaviour)
+        - Medium (misleading or incomplete code)
+        - Low (noise or style)
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does this matter?
+      description: Real-world impact, links, or how often you see it.

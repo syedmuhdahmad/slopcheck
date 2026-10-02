@@ -37,7 +37,7 @@ No single tool focuses on **the failure modes of AI-written code**, built for re
 
 ### slopcheck vs. AI reviewers: complementary, not competing
 
-```
+```text
 Developer + AI writes code
         │
         ▼
@@ -86,7 +86,7 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopche
 
 ## What it will look like
 
-```
+```text
 $ slopcheck --diff main
 
 src/auth.py
@@ -104,7 +104,7 @@ src/utils/dates.py
 
 ## Architecture (planned)
 
-```
+```text
 ┌─────────────┐   ┌──────────────┐   ┌──────────────┐   ┌───────────────┐
 │   Files /   │──▶│    Parser    │──▶│  Rule engine │──▶│   Reporter    │
 │   git diff  │   │ (tree-sitter)│   │  (detectors) │   │ CLI/JSON/SARIF│
@@ -138,7 +138,8 @@ src/utils/dates.py
 
 ## Roadmap
 
-**v0.1 (MVP): Python**
+### v0.1 (MVP): Python
+
 - [ ] CLI: `slopcheck .` and `slopcheck --diff <branch>`
 - [ ] `SLOP001` invented packages (PyPI)
 - [ ] `SLOP010` placeholder comments
@@ -147,12 +148,14 @@ src/utils/dates.py
 - [ ] JSON and SARIF output
 - [ ] GitHub Action
 
-**v0.2**
+### v0.2
+
 - [ ] Config file (`.slopcheck.toml`) and ignore comments
 - [ ] Near-duplicate detection (`SLOP030`)
 - [ ] pre-commit hook
 
-**Later**
+### Later
+
 - [ ] JavaScript / TypeScript (npm registry)
 - [ ] Slopsquatting risk scoring (`SLOP002`)
 - [ ] VS Code extension
@@ -165,6 +168,8 @@ The project is at the very start, which is the best time to shape it.
 - 💡 **Have an example of AI-generated junk?** Open an issue with a code snippet. Real examples are the most valuable input for designing detectors.
 - 🐛 **Know a pattern we're missing?** Propose a detector in an issue.
 - 🗣️ **Disagree with the approach?** Open a discussion. Better now than after v1.
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Everyone taking part is expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue? Report it privately as described in [SECURITY.md](SECURITY.md). Need help? See [SUPPORT.md](SUPPORT.md).
 
 ## License
 

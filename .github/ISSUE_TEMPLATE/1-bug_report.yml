@@ -1,0 +1,42 @@
+name: 🐛 Bug report
+description: slopcheck crashed or behaved incorrectly
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If slopcheck flagged code it shouldn't have, use the **False positive** template instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal code and the exact command you ran.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / traceback
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: slopcheck version
+      placeholder: "slopcheck --version"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Python version
+      placeholder: "Ubuntu 24.04, Python 3.12"
+    validations:
+      required: true
