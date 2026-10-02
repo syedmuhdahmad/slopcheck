@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `known-packages` config and `--known-packages` option: private packages that `SLOP001` accepts without a PyPI lookup, with glob support ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
 - `fail-on` config and `--fail-on` option to choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
 - `check-imports` config and `--check-imports` / `--no-check-imports` options ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+- `SLOP001` recognises project-wide private indexes in `pyproject.toml` (`[[tool.poetry.source]]`, `[[tool.uv.index]]`, `[tool.uv] index-url` / `extra-index-url`): dependencies in that file are no longer reported or sent to PyPI ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
 - `strict` config and `--strict` option: unparseable Python files exit with code 2. Parse errors are now also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
 
 ### Changed

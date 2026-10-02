@@ -328,6 +328,40 @@ class _LineFinder:
         return 0 < line <= len(self.comments) and _suppresses_slop001(self.comments[line - 1])
 
 
+def _is_public_index(url: object) -> bool:
+    return isinstance(url, str) and ("pypi.org" in url or "pythonhosted.org" in url)
+
+
+def _uses_private_index(tool: dict) -> bool:
+    """Whether Poetry or uv may install any dependency from a non-PyPI index.
+
+    Then a name that's missing from PyPI may be a private package, so it must
+    neither be reported nor sent to PyPI.
+    """
+    poetry_sources = tool.get("poetry", {}).get("source", [])
+    for source in poetry_sources if isinstance(poetry_sources, list) else []:
+        # Only "explicit" sources are limited to dependencies that name them (handled
+        # per dependency); primary, supplemental and the legacy kinds serve any package.
+        if (
+            isinstance(source, dict)
+            and source.get("priority") != "explicit"
+            and not _is_public_index(source.get("url"))
+        ):
+            return True
+    uv = tool.get("uv", {})
+    indexes = uv.get("index", [])
+    for index in indexes if isinstance(indexes, list) else []:
+        if (
+            isinstance(index, dict)
+            and not index.get("explicit")
+            and not _is_public_index(index.get("url"))
+        ):
+            return True
+    extra = uv.get("extra-index-url", [])
+    urls = [uv.get("index-url"), *(extra if isinstance(extra, list) else [extra])]
+    return any(url is not None and not _is_public_index(url) for url in urls)
+
+
 def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
     try:
         data = tomllib.loads(text)
@@ -337,7 +371,9 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
     deps: list[Dependency] = []
     project = data.get("project", {})
     project_name = normalize(project["name"]) if isinstance(project.get("name"), str) else None
-    uv_sources = {normalize(n) for n in data.get("tool", {}).get("uv", {}).get("sources", {})}
+    tool = data.get("tool", {})
+    uv_sources = {normalize(n) for n in tool.get("uv", {}).get("sources", {})}
+    private_index = _uses_private_index(tool)
 
     def add_spec(table: str, array: str, spec: object) -> None:
         if not isinstance(spec, str) or not (m := _REQ_NAME.match(spec)):
@@ -346,7 +382,7 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
         if normalize(name) == project_name:  # self-references like "pkg[extra]"
             return
         line = finder.spec(table, array, spec)
-        validate = "://" not in spec and normalize(name) not in uv_sources
+        validate = not private_index and "://" not in spec and normalize(name) not in uv_sources
         deps.append(Dependency(name, rel, line, validate, finder.suppressed(line)))
 
     for spec in project.get("dependencies", []):
@@ -364,7 +400,7 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
         for spec in specs:
             add_spec("dependency-groups", group, spec)
 
-    poetry = data.get("tool", {}).get("poetry", {})
+    poetry = tool.get("poetry", {})
     tables = {
         "tool.poetry.dependencies": poetry.get("dependencies", {}),
         "tool.poetry.dev-dependencies": poetry.get("dev-dependencies", {}),
@@ -380,7 +416,8 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
                 isinstance(s, dict) and {"path", "git", "url", "source"} & set(s) for s in specs
             )
             line = finder.key(table, name)
-            deps.append(Dependency(name, rel, line, not external, finder.suppressed(line)))
+            validate = not (external or private_index)
+            deps.append(Dependency(name, rel, line, validate, finder.suppressed(line)))
     return deps
 
 

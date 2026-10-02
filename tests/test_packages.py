@@ -1,3 +1,5 @@
+import pytest
+
 from slopfence.detectors.packages import parse_dependency_file
 from tests.conftest import FakeRegistry, rule_lines
 
@@ -177,6 +179,47 @@ def test_ignored_and_external_requirements_stay_declared(write, check):
 def test_private_index_skips_validation(write, check):
     write("requirements.txt", "--extra-index-url https://pkgs.example.com/simple\ncorp-lib\n")
     assert check("SLOP001", registry=FakeRegistry(set())).findings == []
+
+
+@pytest.mark.parametrize(
+    ("config", "private"),
+    [
+        ('[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n', True),
+        (
+            '[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            'priority = "supplemental"\n',
+            True,
+        ),
+        # Explicit sources only serve dependencies that name them (checked per dependency).
+        (
+            '[[tool.poetry.source]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            'priority = "explicit"\n',
+            False,
+        ),
+        ('[[tool.poetry.source]]\nname = "mirror"\nurl = "https://pypi.org/simple"\n', False),
+        ('[[tool.uv.index]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n', True),
+        (
+            '[[tool.uv.index]]\nname = "corp"\nurl = "https://pkgs.corp.example/simple"\n'
+            "explicit = true\n",
+            False,
+        ),
+        ('[tool.uv]\nextra-index-url = ["https://pkgs.corp.example/simple"]\n', True),
+        ('[tool.uv]\nindex-url = "https://pypi.org/simple"\n', False),
+    ],
+)
+def test_project_wide_private_index(tmp_path, write, config, private):
+    """A project-wide private Poetry or uv index means names missing from PyPI may be
+    private, so no dependency in that file is looked up on PyPI."""
+    write(
+        "pyproject.toml",
+        '[project]\nname = "demo"\ndependencies = ["corp-auth"]\n\n'
+        '[tool.poetry.dependencies]\ncorp-billing = "^1"\n\n' + config,
+    )
+    deps = parse_dependency_file(tmp_path / "pyproject.toml", tmp_path)
+    assert {d.name: d.validate for d in deps} == {
+        "corp-auth": not private,
+        "corp-billing": not private,
+    }
 
 
 def test_pyproject_line_is_the_dependency_entry(write, check):
