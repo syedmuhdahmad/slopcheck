@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: syedmuhdahmad/slopfence@v0.1.0
+      - uses: syedmuhdahmad/slopfence@v0.1.1
 ```
 
 On pull requests it automatically checks only the changed lines (set `diff: none` to check everything, or `diff: <ref>` for a specific ref). To show findings inline on the pull request, set `sarif-file: slopfence.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
@@ -103,7 +103,7 @@ On pull requests it automatically checks only the changed lines (set `diff: none
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/syedmuhdahmad/slopfence
-    rev: v0.1.0
+    rev: v0.1.1
     hooks:
       - id: slopfence
 ```
