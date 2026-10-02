@@ -42,7 +42,7 @@ New here? Look for issues labelled [`good first issue`](https://github.com/syedm
 
 ### What happens to your pull request
 
-- These checks must pass: `ci` (lint and tests on Linux, macOS and Windows), the GitHub Action end-to-end tests (`action (…)` on each OS and `sarif-upload`), and `pre-commit-hook`.
+- The `ci` check must pass. It only passes when all of these pass: lint, tests on Linux, macOS and Windows, the package build (the same build and smoke test as a release), and the end-to-end tests of the GitHub Action and the pre-commit hook.
 - **Copilot reviews every pull request automatically** and again after each push. The `copilot-review` check waits (up to 25 minutes) until Copilot has reviewed the latest commit, which usually takes 1–15 minutes. If it times out, re-run it once the review appears. Its comments must be resolved like any other review. If Copilot is unavailable, a maintainer can add the `skip-copilot-review` label.
 - **CodeRabbit also reviews every pull request**, and its findings must be fixed before merging. It requests changes while it has open comments or a failing pre-merge check (a clear title, the linked issue fully addressed, and docstrings on at least 80% of the functions you touch), and approves once they are resolved. If you think a finding is wrong, reply to it: CodeRabbit answers, and a maintainer decides.
 - A maintainer merges it once the checks pass and review comments are addressed.

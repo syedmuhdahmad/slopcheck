@@ -1,17 +1,13 @@
 name: pre-commit hook
 
 # End-to-end test of .pre-commit-hooks.yaml using pre-commit itself.
+# Called by ci.yml, so the required `ci` check fails when this fails.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   pre-commit-hook:

@@ -55,10 +55,66 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: pytest -q
 
-  # Single required status check that gates merging into main.
+  # Builds the sdist and wheel exactly like release.yml, so packaging breaks on the
+  # pull request instead of at release time.
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: Smoke-test the wheel (same as the release workflow)
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/slopfence --version
+          /tmp/smoke/bin/slopfence src --offline
+      - name: The sdist contains only what's needed to build and test
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          size=$(stat -c %s "$sdist")
+          echo "sdist: $sdist ($size bytes)"
+          tar tzf "$sdist" | sed 's|^[^/]*/||' | sort > contents.txt
+          cat contents.txt
+          if grep -E '^(docs|\.github)/' contents.txt; then
+            echo "::error::the sdist contains docs/ or .github/ files"; exit 1
+          fi
+          [ "$size" -lt 100000 ] || { echo "::error::the sdist is larger than 100 KB"; exit 1; }
+      - name: Build a wheel from the sdist and run its tests
+        run: |
+          mkdir /tmp/from-sdist && tar xzf dist/*.tar.gz -C /tmp/from-sdist
+          src=$(echo /tmp/from-sdist/*)
+          python -m venv /tmp/sdist-venv
+          /tmp/sdist-venv/bin/pip install build pytest
+          /tmp/sdist-venv/bin/python -m build --wheel "$src" -o /tmp/sdist-wheel
+          /tmp/sdist-venv/bin/pip install /tmp/sdist-wheel/*.whl
+          cd "$src" && /tmp/sdist-venv/bin/python -m pytest -q -p no:cacheprovider
+
+  # End-to-end tests of the GitHub Action and the pre-commit hook (reusable workflows).
+  action:
+    uses: ./.github/workflows/action.yml
+    permissions:
+      contents: read
+      security-events: write  # its sarif-upload job uploads to code scanning
+
+  pre-commit:
+    uses: ./.github/workflows/pre-commit-hook.yml
+
+  # Single required status check that gates merging into main. It fails if any job
+  # above fails or is cancelled. Skipped jobs don't fail it: sarif-upload is skipped
+  # for pull requests from forks, whose token can't write security events.
   ci:
     if: always()
-    needs: [lint, test]
+    needs: [lint, test, package, action, pre-commit]
     runs-on: ubuntu-latest
     steps:
       - name: All checks passed
