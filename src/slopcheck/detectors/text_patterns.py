@@ -55,7 +55,7 @@ def _scan(
     src: SourceFile, rule: str, patterns: list[re.Pattern[str]], label: str
 ) -> Iterator[Finding]:
     for span in src.text_spans():
-        text = span.text.lstrip("#").strip()
+        text = span.text.lstrip("#").strip().strip("\"'").strip()
         for pattern in patterns:
             if pattern.search(text):
                 snippet = text if len(text) <= 80 else text[:77] + "..."

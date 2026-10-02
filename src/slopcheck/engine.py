@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,11 +60,13 @@ def discover(paths: Sequence[Path]) -> tuple[list[Path], list[Path]]:
             elif _is_dependency_file(path):
                 dep_files.append(path)
             continue
-        for child in sorted(path.rglob("*")):
-            rel_parts = child.relative_to(path).parts
-            if any(part in EXCLUDED_DIRS or part.endswith(".egg-info") for part in rel_parts):
-                continue
-            if child.is_file():
+        for dirpath, dirnames, filenames in os.walk(path):
+            # Prune excluded trees (.venv, node_modules, .git...) before descending.
+            dirnames[:] = [
+                d for d in dirnames if d not in EXCLUDED_DIRS and not d.endswith(".egg-info")
+            ]
+            for filename in filenames:
+                child = Path(dirpath, filename)
                 if child.suffix == ".py":
                     py_files.append(child)
                 elif _is_dependency_file(child):

@@ -11,9 +11,10 @@ inputs:
     default: "."
   diff:
     description: >
-      Only report issues on lines changed since this git ref. Defaults to the
-      pull request base branch on pull_request events; empty means check everything.
-    default: ""
+      Which lines to check. "auto" (default) checks only lines changed versus the
+      pull request base branch on pull_request events, and everything otherwise.
+      "none" always checks everything. Any other value is a git ref to diff against.
+    default: "auto"
   args:
     description: Extra arguments passed to slopcheck (e.g. "--ignore SLOP051").
     default: ""
@@ -47,11 +48,17 @@ runs:
         INPUT_SARIF: ${{ inputs.sarif-file }}
         BASE_REF: ${{ github.base_ref }}
       run: |
-        diff_ref="$INPUT_DIFF"
-        if [ -z "$diff_ref" ] && [ -n "$BASE_REF" ]; then
-          git fetch --quiet --no-tags origin "$BASE_REF"
-          diff_ref="origin/$BASE_REF"
-        fi
+        case "$INPUT_DIFF" in
+          auto)
+            diff_ref=""
+            if [ -n "$BASE_REF" ]; then
+              git fetch --quiet --no-tags origin "$BASE_REF"
+              diff_ref="origin/$BASE_REF"
+            fi
+            ;;
+          none|"") diff_ref="" ;;
+          *) diff_ref="$INPUT_DIFF" ;;
+        esac
         diff_args=()
         if [ -n "$diff_ref" ]; then diff_args=(--diff "$diff_ref"); fi
         # shellcheck disable=SC2086

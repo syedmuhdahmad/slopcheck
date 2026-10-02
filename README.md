@@ -69,7 +69,7 @@ jobs:
       - uses: syedmuhdahmad/slopcheck@main
 ```
 
-On pull requests it automatically checks only the changed lines. To show findings inline on the pull request, set `sarif-file: slopcheck.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
+On pull requests it automatically checks only the changed lines (set `diff: none` to check everything, or `diff: <ref>` for a specific ref). To show findings inline on the pull request, set `sarif-file: slopcheck.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
 
 ### pre-commit
 

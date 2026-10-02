@@ -114,3 +114,28 @@ def test_ignore_comment_on_line(write, check):
 def test_ignore_file(write, check):
     write("src/app.py", "# slopcheck: ignore-file\n# I hope this helps!\n")
     assert check().findings == []
+
+
+def test_docstring_escapes_use_physical_lines(write, check):
+    write(
+        "src/app.py",
+        '''
+        def f():
+            "Intro\\nI hope this helps!"
+
+        def g():
+            """Start \\
+        I hope this helps!"""
+        ''',
+    )
+    assert rule_lines(check("SLOP051"), "SLOP051") == [2, 6]
+
+
+def test_non_utf8_and_bom_files_are_checked(tmp_path, check):
+    (tmp_path / "latin.py").write_bytes(
+        b"# -*- coding: latin-1 -*-\nNAME = 'caf\xe9'\n# I hope this helps!\n"
+    )
+    (tmp_path / "bom.py").write_bytes(b"\xef\xbb\xbf# I hope this helps!\n")
+    result = check("SLOP051")
+    assert result.parse_errors == []
+    assert sorted((f.path, f.line) for f in result.findings) == [("bom.py", 1), ("latin.py", 3)]

@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 
-_IGNORE_RE = re.compile(r"#\s*slopcheck:\s*ignore(?:\[(?P<rules>[A-Z0-9,\s]+)\])?(?!-)", re.I)
-_IGNORE_FILE_RE = re.compile(r"#\s*slopcheck:\s*ignore-file\b", re.I)
+IGNORE_RE = re.compile(r"#\s*slopcheck:\s*ignore(?:\[(?P<rules>[A-Z0-9,\s]+)\])?(?!-)", re.I)
+_ESCAPE_SEQ = re.compile(r"\\[ntr]")
+IGNORE_FILE_RE = re.compile(r"#\s*slopcheck:\s*ignore-file\b", re.I)
 
 
 @dataclass
@@ -60,6 +61,9 @@ class SourceFile:
         return list(self._iter_docstring_lines())
 
     def _iter_docstring_lines(self) -> Iterator[TextSpan]:
+        # Use the physical source lines, not the decoded string value: escapes like
+        # "\n" and backslash-continuations would otherwise shift line numbers.
+        lines = self.text.split("\n")
         nodes = [self.tree] + [
             n
             for n in ast.walk(self.tree)
@@ -75,9 +79,18 @@ class SourceFile:
             ):
                 continue
             const = body[0].value
-            for offset, text in enumerate(const.value.splitlines()):
-                if text.strip():
-                    yield TextSpan(const.lineno + offset, const.col_offset + 1, text)
+            end = const.end_lineno or const.lineno
+            for lineno in range(const.lineno, min(end, len(lines)) + 1):
+                text = lines[lineno - 1]
+                if not text.strip():
+                    continue
+                if lineno == const.lineno:
+                    # ast columns are UTF-8 byte offsets; convert to characters.
+                    col = len(text.encode()[: const.col_offset].decode("utf-8", "replace"))
+                else:
+                    col = len(text) - len(text.lstrip())
+                # Treat escapes like \n as word breaks so "Intro\nI hope this helps" matches.
+                yield TextSpan(lineno, col + 1, _ESCAPE_SEQ.sub(" ", text))
 
     def text_spans(self) -> Iterator[TextSpan]:
         """Comments and docstring lines: where AI chat text and placeholders hide."""
@@ -85,12 +98,23 @@ class SourceFile:
         yield from self.docstring_lines
 
 
+def read_source(path: Path) -> str | None:
+    """Read a file honouring PEP 263 coding cookies and a UTF-8 BOM, like Python does."""
+    try:
+        with tokenize.open(path) as f:
+            return f.read()
+    except (OSError, SyntaxError, UnicodeDecodeError, LookupError):
+        return None
+
+
 def load(path: Path, root: Path) -> SourceFile | None:
     """Parse a file. Returns None if it is not valid Python."""
+    text = read_source(path)
+    if text is None:
+        return None
     try:
-        text = path.read_text(encoding="utf-8")
         tree = ast.parse(text, filename=str(path))
-    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+    except (SyntaxError, ValueError):
         return None
 
     try:
@@ -105,9 +129,9 @@ def load(path: Path, root: Path) -> SourceFile | None:
                 continue
             line, col = tok.start
             src.comments.append(TextSpan(line, col + 1, tok.string))
-            if _IGNORE_FILE_RE.search(tok.string):
+            if IGNORE_FILE_RE.search(tok.string):
                 src.ignore_file = True
-            elif m := _IGNORE_RE.search(tok.string):
+            elif m := IGNORE_RE.search(tok.string):
                 rules = m.group("rules")
                 src.ignores[line] = (
                     {r.strip().upper() for r in rules.split(",") if r.strip()} if rules else None

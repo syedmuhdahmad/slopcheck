@@ -35,12 +35,36 @@ def repo_root(start: Path) -> Path | None:
         return None
 
 
+_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def unquote_git_path(path: str) -> str:
+    """Decode git's C-style quoting: "caf\\303\\251.py" -> café.py."""
+    if not (len(path) >= 2 and path.startswith('"') and path.endswith('"')):
+        return path
+    body, out, i = path[1:-1], bytearray(), 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            if nxt in "01234567" and i + 3 < len(body) + 1:
+                out.append(int(body[i + 1 : i + 4], 8))
+                i += 4
+                continue
+            out.append(_ESCAPES.get(nxt, ord(nxt)))
+            i += 2
+            continue
+        out.extend(ch.encode())
+        i += 1
+    return out.decode("utf-8", "surrogateescape")
+
+
 def parse_unified_diff(diff_text: str) -> ChangedLines:
     changed: ChangedLines = {}
     current: str | None = None
     for line in diff_text.splitlines():
         if line.startswith("+++ "):
-            target = line[4:].strip()
+            target = unquote_git_path(line[4:].rstrip("\n"))
             current = None if target == "/dev/null" else target.removeprefix("b/")
             if current is not None:
                 changed.setdefault(current, set())
@@ -58,8 +82,10 @@ def changed_lines(root: Path, ref: str) -> ChangedLines:
     base = _git(root, "merge-base", ref, "HEAD").strip()
     diff = _git(root, "diff", "--unified=0", "--no-color", "--no-ext-diff", base)
     changed = parse_unified_diff(diff)
-    for path in _git(root, "ls-files", "--others", "--exclude-standard").splitlines():
-        changed[path] = None
+    untracked = _git(root, "ls-files", "-z", "--others", "--exclude-standard")
+    for path in untracked.split("\0"):
+        if path:
+            changed[path] = None
     return changed
 
 

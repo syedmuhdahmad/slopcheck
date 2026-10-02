@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from itertools import groupby
+from urllib.parse import quote
 
 from slopcheck import __version__
 from slopcheck.engine import Result
@@ -83,7 +84,10 @@ def sarif(result: Result) -> str:
             "locations": [
                 {
                     "physicalLocation": {
-                        "artifactLocation": {"uri": f.path, "uriBaseId": "%SRCROOT%"},
+                        "artifactLocation": {
+                            "uri": quote(f.path, safe="/"),
+                            "uriBaseId": "%SRCROOT%",
+                        },
                         "region": {"startLine": f.line, "startColumn": f.col},
                     }
                 }

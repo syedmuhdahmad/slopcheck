@@ -22,7 +22,7 @@ from pathlib import Path
 
 from slopcheck.models import Finding
 from slopcheck.registry import OfflineRegistry, Registry, normalize
-from slopcheck.source import SourceFile
+from slopcheck.source import IGNORE_FILE_RE, IGNORE_RE, SourceFile, read_source
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -95,6 +95,10 @@ KNOWN_IMPORT_NAMES = {
 }
 
 _REQ_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+_EGG = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
+# pip treats "#" as a comment only at line start or after whitespace (URLs contain "#egg=").
+_REQ_COMMENT = re.compile(r"(^|\s)#.*$")
+_TABLE_HEADER = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
 
 
 @dataclass
@@ -102,6 +106,10 @@ class Dependency:
     name: str
     path: str
     line: int
+    # False for packages that don't come from PyPI (URLs, paths, git, private indexes).
+    validate: bool = True
+    # True when an ignore directive covers SLOP001 on this line or file.
+    suppressed: bool = False
 
 
 @dataclass
@@ -112,6 +120,7 @@ class ProjectIndex:
 
     @property
     def declared(self) -> set[str]:
+        """Every declared name, including suppressed and non-PyPI ones."""
         return {normalize(d.name) for d in self.dependencies}
 
 
@@ -135,26 +144,139 @@ def _rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
+def _suppresses_slop001(line: str) -> bool:
+    m = IGNORE_RE.search(line)
+    if not m:
+        return False
+    rules = m.group("rules")
+    return rules is None or "SLOP001" in {r.strip().upper() for r in rules.split(",")}
+
+
 def parse_dependency_file(path: Path, root: Path) -> list[Dependency]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    text = read_source(path)
+    if text is None:
         return []
     rel = _rel(path, root)
-    if path.name == "pyproject.toml":
-        return _parse_pyproject(text, rel)
+    deps = (
+        _parse_pyproject(text, rel)
+        if path.name == "pyproject.toml"
+        else _parse_requirements(text, rel)
+    )
+    if IGNORE_FILE_RE.search(text):
+        for dep in deps:
+            dep.suppressed = True
+    return deps
+
+
+def _parse_requirements(text: str, rel: str) -> list[Dependency]:
+    lines = text.splitlines()
+    # With a non-PyPI index, a name missing from PyPI may be a private package.
+    private_index = any(
+        re.match(r"\s*(-i|--index-url|--extra-index-url)\b", line)
+        and "pypi.org" not in line
+        and "pythonhosted.org" not in line
+        for line in lines
+    )
     deps = []
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        if "slopcheck: ignore" in raw:
+    for lineno, raw in enumerate(lines, start=1):
+        suppressed = _suppresses_slop001(raw)
+        line = _REQ_COMMENT.sub("", raw).strip()
+        if not line:
             continue
-        line = raw.split("#", 1)[0].strip()
-        if not line or line.startswith(("-", "git+", "http:", "https:", "file:", ".", "/")):
-            continue
-        if "@" in line and "://" in line:  # name @ https://... direct references
+        if line.startswith(
+            ("-", "git+", "hg+", "svn+", "bzr+", "http:", "https:", "file:", ".", "/")
+        ):
+            # Options and bare URLs/paths: the name is only known from #egg=.
+            if m := _EGG.search(line):
+                deps.append(
+                    Dependency(m.group(1), rel, lineno, validate=False, suppressed=suppressed)
+                )
             continue
         if m := _REQ_NAME.match(line):
-            deps.append(Dependency(m.group(1), rel, lineno))
+            direct_url = "@" in line and "://" in line  # name @ https://...
+            deps.append(
+                Dependency(
+                    m.group(1),
+                    rel,
+                    lineno,
+                    validate=not (direct_url or private_index),
+                    suppressed=suppressed,
+                )
+            )
     return deps
+
+
+def _table_ranges(lines: list[str]) -> dict[str, tuple[int, int]]:
+    """Map each TOML table header to its (first, last) 0-based line range."""
+    headers = [(i, m.group(1)) for i, line in enumerate(lines) if (m := _TABLE_HEADER.match(line))]
+    ranges = {}
+    for n, (start, name) in enumerate(headers):
+        end = headers[n + 1][0] - 1 if n + 1 < len(headers) else len(lines) - 1
+        ranges.setdefault(name.replace(" ", ""), (start, end))
+    return ranges
+
+
+class _LineFinder:
+    """Find the physical line of each dependency entry within its own TOML table."""
+
+    def __init__(self, text: str) -> None:
+        self.lines = text.splitlines()
+        self.ranges = _table_ranges(self.lines)
+        # (line, column) of entries already matched, so repeated specs map to
+        # successive occurrences and several entries can share one line.
+        self.used: set[tuple[int, int]] = set()
+
+    def _array_range(self, start: int, end: int, key: str) -> tuple[int, int] | None:
+        """Lines spanned by `key = [ ... ]` inside a table, using quote-aware bracket counting."""
+        key_re = re.compile(r"""^\s*["']?""" + re.escape(key) + r"""["']?\s*=""")
+        for i in range(start, end + 1):
+            if not key_re.match(self.lines[i]):
+                continue
+            depth, seen_open = 0, False
+            for j in range(i, end + 1):
+                quote: str | None = None
+                for ch in self.lines[j]:
+                    if quote:
+                        if ch == quote:
+                            quote = None
+                    elif ch in "\"'":
+                        quote = ch
+                    elif ch == "#":
+                        break
+                    elif ch == "[":
+                        depth, seen_open = depth + 1, True
+                    elif ch == "]":
+                        depth -= 1
+                if seen_open and depth <= 0:
+                    return i, j
+            return i, end
+        return None
+
+    def _search(self, table: str, pattern: re.Pattern[str], array: str | None = None) -> int:
+        start, end = self.ranges.get(table, (0, len(self.lines) - 1))
+        if array is not None and (span := self._array_range(start, end, array)):
+            start, end = span
+        for i in range(start, end + 1):
+            line = self.lines[i]
+            if line.lstrip().startswith("#"):  # commented-out entries
+                continue
+            for m in pattern.finditer(line):
+                if (i, m.start()) not in self.used:
+                    self.used.add((i, m.start()))
+                    return i + 1
+        return start + 1
+
+    def spec(self, table: str, array: str, spec: str) -> int:
+        quoted = re.compile(r"""(["'])""" + re.escape(spec) + r"\1")
+        return self._search(table, quoted, array)
+
+    def key(self, table: str, name: str) -> int:
+        return self._search(
+            table, re.compile(r"""^\s*["']?""" + re.escape(name) + r"""["']?\s*=""")
+        )
+
+    def suppressed(self, line: int) -> bool:
+        return 0 < line <= len(self.lines) and _suppresses_slop001(self.lines[line - 1])
 
 
 def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
@@ -162,43 +284,55 @@ def _parse_pyproject(text: str, rel: str) -> list[Dependency]:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
         return []
-    specs: list[str] = []
+    finder = _LineFinder(text)
+    deps: list[Dependency] = []
     project = data.get("project", {})
-    specs += project.get("dependencies", [])
-    for group in project.get("optional-dependencies", {}).values():
-        specs += group
-    for group in data.get("dependency-groups", {}).values():
-        specs += [s for s in group if isinstance(s, str)]
+    project_name = normalize(project["name"]) if isinstance(project.get("name"), str) else None
+    uv_sources = {normalize(n) for n in data.get("tool", {}).get("uv", {}).get("sources", {})}
+
+    def add_spec(table: str, array: str, spec: object) -> None:
+        if not isinstance(spec, str) or not (m := _REQ_NAME.match(spec)):
+            return
+        name = m.group(1)
+        if normalize(name) == project_name:  # self-references like "pkg[extra]"
+            return
+        line = finder.spec(table, array, spec)
+        validate = "://" not in spec and normalize(name) not in uv_sources
+        deps.append(Dependency(name, rel, line, validate, finder.suppressed(line)))
+
+    for spec in project.get("dependencies", []):
+        add_spec("project", "dependencies", spec)
+    optional_table = (
+        "project.optional-dependencies"
+        if "project.optional-dependencies" in finder.ranges
+        else "project"
+    )
+    for group, specs in project.get("optional-dependencies", {}).items():
+        array = group if optional_table != "project" else "optional-dependencies"
+        for spec in specs:
+            add_spec(optional_table, array, spec)
+    for group, specs in data.get("dependency-groups", {}).items():
+        for spec in specs:
+            add_spec("dependency-groups", group, spec)
+
     poetry = data.get("tool", {}).get("poetry", {})
-    poetry_names = [
-        name
-        for table in [poetry.get("dependencies", {}), poetry.get("dev-dependencies", {})]
-        + [g.get("dependencies", {}) for g in poetry.get("group", {}).values()]
-        for name, spec in table.items()
-        if name.lower() != "python"
-        and not (isinstance(spec, dict) and ("path" in spec or "git" in spec))
-    ]
-    project_name = normalize(project.get("name", "")) if project.get("name") else None
-
-    lines = text.splitlines()
-    deps = []
-    for spec in specs:
-        if "://" in spec:
-            continue
-        if m := _REQ_NAME.match(spec):
-            name = m.group(1)
-            if normalize(name) != project_name:  # self-references like "pkg[extra]"
-                deps.append(Dependency(name, rel, _find_line(lines, spec)))
-    for name in poetry_names:
-        deps.append(Dependency(name, rel, _find_line(lines, name)))
+    tables = {
+        "tool.poetry.dependencies": poetry.get("dependencies", {}),
+        "tool.poetry.dev-dependencies": poetry.get("dev-dependencies", {}),
+    }
+    for group, body in poetry.get("group", {}).items():
+        tables[f"tool.poetry.group.{group}.dependencies"] = body.get("dependencies", {})
+    for table, entries in tables.items():
+        for name, spec in entries.items():
+            if name.lower() == "python":
+                continue
+            specs = spec if isinstance(spec, list) else [spec]
+            external = any(
+                isinstance(s, dict) and {"path", "git", "url", "source"} & set(s) for s in specs
+            )
+            line = finder.key(table, name)
+            deps.append(Dependency(name, rel, line, not external, finder.suppressed(line)))
     return deps
-
-
-def _find_line(lines: list[str], needle: str) -> int:
-    for i, line in enumerate(lines, start=1):
-        if needle in line:
-            return i
-    return 1
 
 
 def _installed_modules() -> set[str]:
@@ -232,10 +366,13 @@ class PackageChecker:
         self.registry = registry
         self._installed = _installed_modules()
         self._declared = index.declared
+        self._missing: dict[str, bool] = {}
 
     def check_dependencies(self, only_paths: set[str] | None = None) -> Iterator[Finding]:
         for dep in self.index.dependencies:
             if only_paths is not None and dep.path not in only_paths:
+                continue
+            if not dep.validate or dep.suppressed:
                 continue
             if self.registry.exists(dep.name) is False:
                 yield Finding(
@@ -257,17 +394,21 @@ class PackageChecker:
             or _is_installed(name, self._installed)
         )
 
+    def _is_missing(self, name: str) -> bool:
+        """Cached per name; every import occurrence is still reported separately."""
+        if name not in self._missing:
+            missing = False
+            if self._should_lookup(name):
+                answers = [self.registry.exists(c) for c in {name, name.replace("_", "-")}]
+                missing = all(a is False for a in answers)
+            self._missing[name] = missing
+        return self._missing[name]
+
     def check_imports(self, src: SourceFile) -> Iterator[Finding]:
         if isinstance(self.registry, OfflineRegistry):
             return
-        seen: set[str] = set()
         for name, node in _top_level_imports(src.tree):
-            if name in seen or not self._should_lookup(name):
-                continue
-            seen.add(name)
-            candidates = {name, name.replace("_", "-")}
-            answers = [self.registry.exists(c) for c in candidates]
-            if answers and all(a is False for a in answers):
+            if self._is_missing(name):
                 yield Finding(
                     "SLOP001",
                     src.rel,

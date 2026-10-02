@@ -114,3 +114,45 @@ def test_diff_with_bad_ref(tmp_path, monkeypatch):
 def test_list_rules(capsys):
     assert main(["--list-rules"]) == 0
     assert "SLOP001" in capsys.readouterr().out
+
+
+def test_unquote_git_path():
+    assert diffmod.unquote_git_path('"b/caf\\303\\251.py"') == "b/café.py"
+    assert diffmod.unquote_git_path('"b/a\\tb.py"') == "b/a\tb.py"
+    assert diffmod.unquote_git_path("b/plain.py") == "b/plain.py"
+
+
+def test_diff_mode_with_non_ascii_filenames(tmp_path, capsys, monkeypatch):
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "café.py").write_text("x = 1\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    _git(tmp_path, "switch", "-q", "-c", "feature")
+    (tmp_path / "café.py").write_text("x = 1\n# I hope this helps!\n")
+    (tmp_path / "naïve.py").write_text("# I hope this helps!\n")
+    monkeypatch.chdir(tmp_path)
+    main([".", "--offline", "--diff", "main", "--format", "json"])
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert sorted((f["path"], f["line"]) for f in findings) == [("café.py", 2), ("naïve.py", 1)]
+
+
+def test_sarif_uri_is_percent_encoded(tmp_path):
+    (tmp_path / "task#1 50%.py").write_text(SLOPPY)
+    out = tmp_path / "r.sarif"
+    main([str(tmp_path), "--offline", "--format", "sarif", "-o", str(out)])
+    [res] = json.loads(out.read_text())["runs"][0]["results"]
+    uri = res["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+    assert uri == "task%231%2050%25.py"
+
+
+def test_excluded_directories_are_not_walked(tmp_path):
+    from slopcheck.engine import discover
+
+    (tmp_path / "app.py").write_text("")
+    for d in [".venv/lib", "node_modules/x", "pkg.egg-info"]:
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "m.py").write_text("")
+    py_files, _ = discover([tmp_path])
+    assert [p.name for p in py_files] == ["app.py"]

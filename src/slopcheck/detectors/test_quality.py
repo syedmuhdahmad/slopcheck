@@ -7,6 +7,7 @@ every assertion in it is meaningless, never when one meaningful check exists.
 from __future__ import annotations
 
 import ast
+import builtins
 from collections.abc import Iterator
 
 from slopcheck.models import Finding
@@ -34,7 +35,12 @@ def _root_name(node: ast.AST) -> str | None:
 
 
 def _is_mock_factory(call: ast.AST) -> bool:
-    return isinstance(call, ast.Call) and _dotted(call.func).split(".")[-1] in MOCK_FACTORIES
+    """A call creating a purely synthetic mock. Mock(wraps=real) runs real code, so it isn't."""
+    return (
+        isinstance(call, ast.Call)
+        and _dotted(call.func).split(".")[-1] in MOCK_FACTORIES
+        and not any(k.arg == "wraps" for k in call.keywords)
+    )
 
 
 def _is_patch_decorator(dec: ast.AST) -> bool:
@@ -52,8 +58,15 @@ def _test_functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFun
 
 
 def _walk_own_body(func: ast.AST) -> Iterator[ast.AST]:
-    """Walk a function's body without descending into nested functions or classes."""
-    stack = list(ast.iter_child_nodes(func))
+    """Walk a function's body without descending into nested functions or classes.
+
+    Decorators, default arguments and annotations are skipped: they run at
+    collection time, not as part of the test.
+    """
+    if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        stack: list[ast.AST] = list(func.body)
+    else:
+        stack = list(ast.iter_child_nodes(func))
     while stack:
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
@@ -194,25 +207,33 @@ def _is_trivially_true(node: ast.AST) -> bool:
         and node.func.attr == "assertEqual"
         and len(node.args) >= 2
     ):
-        return ast.dump(node.args[0]) == ast.dump(node.args[1]) and not _has_call(node.args[0])
+        return _equal_constants(node.args[0], node.args[1])
     else:
         return False
 
     if isinstance(test, ast.Constant):
         return bool(test.value)
-    # assert x == x  (same expression on both sides, no calls that could have side effects)
-    if (
-        isinstance(test, ast.Compare)
-        and len(test.ops) == 1
-        and isinstance(test.ops[0], (ast.Eq, ast.Is, ast.GtE, ast.LtE))
-    ):
-        left, right = test.left, test.comparators[0]
-        return ast.dump(left) == ast.dump(right) and not _has_call(left)
+    if isinstance(test, ast.Compare) and len(test.ops) == 1:
+        left, right, op = test.left, test.comparators[0], test.ops[0]
+        # `assert 1 == 1`: literal values, so the comparison semantics are known.
+        if isinstance(op, ast.Eq):
+            return _equal_constants(left, right)
+        # `assert x is x`: identity of the same name always holds (even for NaN).
+        # Attributes and subscripts are excluded: properties can return new objects.
+        if isinstance(op, ast.Is):
+            return (
+                isinstance(left, ast.Name) and isinstance(right, ast.Name) and left.id == right.id
+            )
     return False
 
 
-def _has_call(node: ast.AST) -> bool:
-    return any(isinstance(n, ast.Call) for n in ast.walk(node))
+def _equal_constants(left: ast.AST, right: ast.AST) -> bool:
+    return (
+        isinstance(left, ast.Constant)
+        and isinstance(right, ast.Constant)
+        and type(left.value) is type(right.value)
+        and left.value == right.value
+    )
 
 
 def _unused_call_results(func: ast.AST) -> list[str]:
@@ -264,15 +285,34 @@ def check_trivial_assertions(src: SourceFile) -> Iterator[Finding]:
 # --- SLOP022 -------------------------------------------------------------------
 
 
-def _handler_swallows(handler: ast.ExceptHandler) -> bool:
+def _catches_assertion_error(handler: ast.ExceptHandler) -> bool | None:
+    """True/False if known; None if the handler names a type we can't resolve."""
     if handler.type is None:
-        caught = {"BaseException"}
-    elif isinstance(handler.type, ast.Tuple):
-        caught = {_dotted(e).split(".")[-1] for e in handler.type.elts}
-    else:
-        caught = {_dotted(handler.type).split(".")[-1]}
-    if not caught & SWALLOWING_EXCEPTIONS:
-        return False
+        return True
+    elts = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    unknown = False
+    for elt in elts:
+        name = _dotted(elt).split(".")[-1]
+        if name in SWALLOWING_EXCEPTIONS:
+            return True
+        exc = getattr(builtins, name, None)
+        if not (isinstance(exc, type) and issubclass(exc, BaseException)):
+            unknown = True  # custom or aliased exception: could be AssertionError
+    return None if unknown else False
+
+
+def _swallowing_handler(try_node: ast.Try) -> ast.ExceptHandler | None:
+    """The handler an AssertionError would land in, if that handler swallows it."""
+    for handler in try_node.handlers:
+        catches = _catches_assertion_error(handler)
+        if catches is None:
+            return None  # can't tell which handler runs: stay quiet
+        if catches:
+            return handler if _handler_swallows(handler) else None
+    return None
+
+
+def _handler_swallows(handler: ast.ExceptHandler) -> bool:
     for node in ast.walk(handler):
         if isinstance(node, ast.Raise):
             return False
@@ -301,14 +341,14 @@ def check_swallowed_assertions(src: SourceFile) -> Iterator[Finding]:
         for node in _walk_own_body(func):
             if not isinstance(node, ast.Try):
                 continue
-            handlers = [h for h in node.handlers if _handler_swallows(h)]
-            if not handlers:
+            handler = _swallowing_handler(node)
+            if handler is None:
                 continue
-            guarded = {id(n) for stmt in node.body for n in ast.walk(stmt) if _is_assertion(n)}
+            guarded = {id(n) for stmt in node.body for n in ast.walk(stmt)} & all_asserts
             if guarded:
                 swallowed |= guarded
-                if first_handler is None or handlers[0].lineno < first_handler.lineno:
-                    first_handler = handlers[0]
+                if first_handler is None or handler.lineno < first_handler.lineno:
+                    first_handler = handler
         # If any assertion can still fail, the test can still fail.
         if first_handler is None or swallowed != all_asserts:
             continue
