@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "slopfence"
 dynamic = ["version"]
-description = "A fast, deterministic quality gate for AI-assisted code: catches hallucinated packages, fake tests, placeholder stubs and chat leftovers."
+description = "A fast, deterministic quality gate for AI-assisted code: catches hallucinated packages, fake tests, stub functions, duplicate helpers and chat leftovers."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

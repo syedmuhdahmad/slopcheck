@@ -32,6 +32,7 @@ from slopfence.indexes import is_public_index, pipfile_is_private, uses_private_
 from slopfence.models import Finding
 from slopfence.registry import OfflineRegistry, Registry, normalize
 from slopfence.source import IGNORE_FILE_RE, IGNORE_RE, SourceFile, read_source
+from slopfence.source import relative_path as _rel
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -142,13 +143,6 @@ def dependency_file_is_private(path: Path) -> bool:
         except tomllib.TOMLDecodeError:
             return False
     return _requirements_use_private_index(text.splitlines())
-
-
-def _rel(path: Path, root: Path) -> str:
-    try:
-        return path.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def _suppresses_slop001(line: str) -> bool:

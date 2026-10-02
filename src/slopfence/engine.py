@@ -10,10 +10,12 @@ from pathlib import Path
 from slopfence import diff as diffmod
 from slopfence.config import is_excluded
 from slopfence.detectors import FILE_DETECTORS
+from slopfence.detectors.duplicates import check_duplicates
 from slopfence.detectors.packages import LOCK_FILES, PackageChecker, build_index
 from slopfence.models import RULES, Finding
 from slopfence.registry import Registry
 from slopfence.source import SourceFile, load
+from slopfence.source import relative_path as _rel_to
 
 EXCLUDED_DIRS = {
     ".git",
@@ -35,13 +37,6 @@ EXCLUDED_DIRS = {
     ".pytest_cache",
     ".ruff_cache",
 }
-
-
-def _rel_to(path: Path, root: Path) -> str:
-    try:
-        return path.resolve().relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def _is_dependency_file(path: Path) -> bool:
@@ -175,6 +170,25 @@ def run(
             findings.extend(
                 f for f in checker.check_imports(src) if not src.is_ignored(f.rule, f.line)
             )
+
+    if "SLOP030" in rules:
+        # Compare against every function in the project, not just the checked files.
+        if any(Path(p).resolve() == root for p in paths):
+            project = sources
+        else:
+            checked_paths = {s.path.resolve() for s in sources}
+            project = list(sources)
+            for path in discover([root])[0]:
+                if path.resolve() in checked_paths or is_excluded(_rel_to(path, root), exclude):
+                    continue
+                if (src := load(path, root)) is not None:
+                    project.append(src)
+        by_rel = {s.rel: s for s in sources}
+        findings.extend(
+            f
+            for f in check_duplicates(project, set(by_rel), changed)
+            if not by_rel[f.path].is_ignored(f.rule, f.line)
+        )
 
     if changed is not None:
         findings = [f for f in findings if diffmod.touches(changed, f.path, f.line, f.end_line)]

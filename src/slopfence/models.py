@@ -38,6 +38,13 @@ RULES: dict[str, Rule] = {
             "Placeholder or stub comment left in code that looks finished.",
         ),
         Rule(
+            "SLOP011",
+            "stub-function",
+            Severity.MEDIUM,
+            "Function whose docstring promises work but which only returns hardcoded "
+            "data or nothing.",
+        ),
+        Rule(
             "SLOP020",
             "test-asserts-only-mocks",
             Severity.HIGH,
@@ -54,6 +61,18 @@ RULES: dict[str, Rule] = {
             "test-cannot-fail",
             Severity.HIGH,
             "Test assertions are wrapped in try/except that swallows the failure.",
+        ),
+        Rule(
+            "SLOP030",
+            "duplicate-function",
+            Severity.MEDIUM,
+            "Function that is identical or nearly identical to another one in the project.",
+        ),
+        Rule(
+            "SLOP040",
+            "swallowed-exception",
+            Severity.LOW,
+            "`except Exception` (or bare `except`) that silently ignores every error.",
         ),
         Rule(
             "SLOP051",

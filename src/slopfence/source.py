@@ -106,6 +106,14 @@ class SourceFile:
         yield from self.docstring_lines
 
 
+def relative_path(path: Path, root: Path) -> str:
+    """``path`` relative to ``root`` as a POSIX string, or as given if it's outside."""
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def read_source(path: Path) -> str | None:
     """Read a file honouring PEP 263 coding cookies and a UTF-8 BOM, like Python does."""
     try:
