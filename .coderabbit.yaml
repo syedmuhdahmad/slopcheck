@@ -40,8 +40,11 @@ reviews:
         FakeRegistry fixture or a pinned cache.
     - path: ".github/workflows/**"
       instructions: |
-        Check least-privilege `permissions`, that untrusted PR input never reaches
-        `run:` scripts unquoted, and that jobs still work for pull requests from forks.
+        Check least-privilege `permissions`, and that jobs still work for pull requests
+        from forks. Untrusted input (PR titles, branch names, labels, commit messages)
+        must never be interpolated into `run:` scripts with `${{ }}`, quoted or not:
+        GitHub substitutes expressions before the shell runs. Pass it via `env:` and
+        use the quoted environment variable in the script.
     - path: "action.yml"
       instructions: |
         The composite action must work on Linux, macOS and Windows runners and must
