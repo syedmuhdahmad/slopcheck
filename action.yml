@@ -1,0 +1,70 @@
+name: slopcheck
+description: Find the junk AI coding assistants leave behind (hallucinated packages, fake tests, placeholders, chat leftovers).
+author: syedmuhdahmad
+branding:
+  icon: check-circle
+  color: orange
+
+inputs:
+  paths:
+    description: Files or directories to check (space-separated).
+    default: "."
+  diff:
+    description: >
+      Which lines to check. "auto" (default) checks only lines changed versus the
+      pull request base branch on pull_request events, and everything otherwise.
+      "none" always checks everything. Any other value is a git ref to diff against.
+    default: "auto"
+  args:
+    description: Extra arguments passed to slopcheck (e.g. "--ignore SLOP051").
+    default: ""
+  sarif-file:
+    description: If set, also write a SARIF report to this path (for github/codeql-action/upload-sarif).
+    default: ""
+  version:
+    description: slopcheck version to install. Defaults to the version matching this action ref.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install slopcheck
+      shell: bash
+      env:
+        SLOPCHECK_VERSION: ${{ inputs.version }}
+      run: |
+        if [ -n "$SLOPCHECK_VERSION" ]; then
+          python3 -m pip install --quiet "slopcheck==$SLOPCHECK_VERSION"
+        else
+          python3 -m pip install --quiet "$GITHUB_ACTION_PATH"
+        fi
+
+    - name: Run slopcheck
+      shell: bash
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_DIFF: ${{ inputs.diff }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_SARIF: ${{ inputs.sarif-file }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        case "$INPUT_DIFF" in
+          auto)
+            diff_ref=""
+            if [ -n "$BASE_REF" ]; then
+              git fetch --quiet --no-tags origin "$BASE_REF"
+              diff_ref="origin/$BASE_REF"
+            fi
+            ;;
+          none|"") diff_ref="" ;;
+          *) diff_ref="$INPUT_DIFF" ;;
+        esac
+        diff_args=()
+        if [ -n "$diff_ref" ]; then diff_args=(--diff "$diff_ref"); fi
+        # shellcheck disable=SC2086
+        if [ -n "$INPUT_SARIF" ]; then
+          python3 -m slopcheck $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS \
+            --format sarif --output "$INPUT_SARIF" --exit-zero
+        fi
+        # shellcheck disable=SC2086
+        python3 -m slopcheck $INPUT_PATHS "${diff_args[@]}" $INPUT_ARGS

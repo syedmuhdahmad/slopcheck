@@ -11,12 +11,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-  # Uncomment once pyproject.toml exists
-  # - package-ecosystem: pip
-  #   directory: /
-  #   schedule:
-  #     interval: weekly
-  #   labels:
-  #     - dependencies
-  #   commit-message:
-  #     prefix: chore
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
