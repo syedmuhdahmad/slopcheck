@@ -47,10 +47,26 @@ slopfence --diff main
 | `-o, --output FILE` | Write the report to a file |
 | `--offline` | Skip PyPI lookups (disables `SLOP001`) |
 | `--select` / `--ignore` | Comma-separated rule IDs to run or skip, e.g. `--ignore SLOP051` |
+| `--exclude` | Comma-separated paths or globs to skip, e.g. `--exclude migrations,*_pb2.py` |
 | `--exit-zero` | Always exit 0 (report only) |
 | `--list-rules` | Show all rules |
 
 Exit codes: `0` no issues, `1` issues found, `2` error.
+
+### Configuration
+
+Add a `[tool.slopfence]` table to the `pyproject.toml` at your project root:
+
+```toml
+[tool.slopfence]
+select = ["SLOP001", "SLOP010", "SLOP020"]  # rules to run (default: all)
+ignore = ["SLOP051"]                         # rules to skip
+exclude = ["migrations", "tests/fixtures/", "*_pb2.py"]
+```
+
+`exclude` works like `.gitignore`: a pattern without a `/` in the middle matches any file or folder name anywhere (`migrations`, `*_pb2.py`), and a pattern with one is relative to the project root (`tests/fixtures/`). Excluded files are never checked, but imports of excluded modules still count as your own code.
+
+Command-line options (`--select`, `--ignore`, `--exclude`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
 
 ### Ignoring a finding
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from slopfence import __version__, reporters
 from slopfence import diff as diffmod
+from slopfence.config import ConfigError, load_config
 from slopfence.engine import run
 from slopfence.models import RULES
 from slopfence.registry import OfflineRegistry, PyPIRegistry
@@ -37,9 +38,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=["text", "json", "sarif"], default="text")
     parser.add_argument("-o", "--output", type=Path, help="write the report to a file")
     parser.add_argument("--offline", action="store_true", help="skip PyPI lookups (SLOP001)")
-    parser.add_argument("--select", type=_rule_list, help="comma-separated rules to run")
     parser.add_argument(
-        "--ignore", type=_rule_list, default=[], help="comma-separated rules to skip"
+        "--select", type=_rule_list, help="comma-separated rules to run (overrides config)"
+    )
+    parser.add_argument(
+        "--ignore", type=_rule_list, help="comma-separated rules to skip (overrides config)"
+    )
+    parser.add_argument(
+        "--exclude",
+        type=lambda v: [p.strip() for p in v.split(",") if p.strip()],
+        help="comma-separated paths or globs to skip (overrides config)",
     )
     parser.add_argument("--exit-zero", action="store_true", help="exit 0 even if issues are found")
     parser.add_argument("--no-color", action="store_true")
@@ -68,6 +76,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         cwd = Path.cwd().resolve()
         root = cwd if start_dir == cwd or cwd in start_dir.parents else start_dir
 
+    try:
+        config = load_config(root)
+    except ConfigError as err:
+        print(f"slopfence: error: {err}", file=sys.stderr)
+        return EXIT_ERROR
+    # Command-line options replace the matching config values.
+    select = args.select if args.select is not None else config.select
+    ignore = args.ignore if args.ignore is not None else config.ignore
+    exclude = args.exclude if args.exclude is not None else config.exclude
+
     changed = None
     if args.diff:
         try:
@@ -78,7 +96,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     registry = OfflineRegistry() if args.offline else PyPIRegistry()
     result = run(
-        args.paths, root, registry, select=args.select, ignore=args.ignore, changed=changed
+        args.paths,
+        root,
+        registry,
+        select=select,
+        ignore=ignore,
+        changed=changed,
+        exclude=exclude,
     )
     if isinstance(registry, PyPIRegistry):
         registry.save()
