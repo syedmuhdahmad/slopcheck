@@ -156,3 +156,16 @@ def test_excluded_directories_are_not_walked(tmp_path):
         (tmp_path / d / "m.py").write_text("")
     py_files, _ = discover([tmp_path])
     assert [p.name for p in py_files] == ["app.py"]
+
+
+def test_non_utf8_stdout_does_not_crash(tmp_path, monkeypatch):
+    # Windows CI pipes default to cp1252, which can't encode emoji.
+    import io
+    import sys
+
+    (tmp_path / "app.py").write_text("# I hope this helps! \u2705 caf\u00e9\n", encoding="utf-8")
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+    assert main([str(tmp_path), "--offline", "--no-color"]) == 1
+    sys.stdout.flush()
+    assert "I hope this helps! \u2705 caf\u00e9" in raw.getvalue().decode("utf-8")

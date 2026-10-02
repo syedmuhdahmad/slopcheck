@@ -49,7 +49,7 @@ jobs:
           git push -q origin main
           # New slop on a feature branch.
           git switch -q -c feature
-          printf '# I hope this helps with the café menu!\n' >> src/app.py
+          printf '# I hope this helps! \xe2\x9c\x85 caf\xc3\xa9\n' >> src/app.py
           printf 'flask-jwt-simple-auth\n' >> requirements.txt
           printf 'from unittest.mock import Mock\n\n\ndef test_user():\n    user = Mock()\n    user.name = "x"\n    assert user.name == "x"\n' > tests/test_app.py
           git add -A && git commit -qm feature
@@ -87,6 +87,17 @@ jobs:
         with:
           paths: clean
           diff: none
+
+      - name: Text output survives non-ASCII on this platform
+        run: |
+          venv="$RUNNER_TEMP/slopfence-venv"
+          if [ -x "$venv/bin/python" ]; then py="$venv/bin/python"; else py="$venv/Scripts/python"; fi
+          status=0
+          "$py" -m slopfence src --offline --no-color > out.txt 2> err.txt || status=$?
+          cat out.txt err.txt
+          [ "$status" -eq 1 ] || { echo "::error::expected exit 1 (findings), got $status"; exit 1; }
+          if grep -q Traceback err.txt; then echo "::error::slopfence crashed"; exit 1; fi
+          grep -q "$(printf 'caf\xc3\xa9')" out.txt || { echo "::error::output is not UTF-8"; exit 1; }
 
       # Only for the checker below; the action steps above use the runner's own Python.
       - uses: actions/setup-python@v7
