@@ -1,5 +1,7 @@
 # slopcheck
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **A fast, deterministic quality gate for AI-assisted code.**
 
 slopcheck finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers) before it gets merged.
@@ -173,4 +175,4 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Ev
 
 ## License
 
-[MIT](LICENSE)
+Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.

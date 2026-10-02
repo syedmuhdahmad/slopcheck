@@ -79,7 +79,7 @@ A detector is only useful if people trust it. Before proposing or writing one, c
 
 ## Licensing of contributions
 
-By submitting a pull request, you agree that your contribution is licensed under the [MIT License](LICENSE), the same license as the project.
+By submitting a pull request, you agree that your contribution is licensed under the [Apache License 2.0](LICENSE), the same license as the project (see section 5 of the license, "Submission of Contributions").
 
 ## Recognition
 

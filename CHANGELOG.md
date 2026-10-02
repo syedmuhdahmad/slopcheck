@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Apache License 2.0 and NOTICE file (replaces MIT)
 - Project README describing the problem, design principles, planned detectors and roadmap
 - Community health files: Code of Conduct, Contributing guide, Security policy, Support, Governance
 - Issue templates, pull request template, CODEOWNERS, Dependabot and CI
