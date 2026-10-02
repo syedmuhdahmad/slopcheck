@@ -1,0 +1,55 @@
+name: Copilot review
+
+# Keeps PRs from being merged before Copilot has reviewed the latest commit.
+# Copilot's automatic review takes anywhere from ~2 to 15 minutes; this check
+# stays pending until it lands. Copilot submitting its review re-triggers the
+# workflow, so the check turns green as soon as the review exists.
+#
+# Passes immediately for bot-authored PRs (Dependabot), drafts, and PRs labelled
+# `skip-copilot-review` (use when Copilot is unavailable).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: copilot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  copilot-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Wait for Copilot to review the latest commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'skip-copilot-review') }}
+        run: |
+          if [ "$SKIP" = "true" ]; then echo "Labelled skip-copilot-review: not waiting."; exit 0; fi
+          if [ "$DRAFT" = "true" ]; then echo "Draft PR: Copilot doesn't review drafts."; exit 0; fi
+          case "$AUTHOR" in *"[bot]") echo "Bot-authored PR ($AUTHOR): not waiting."; exit 0 ;; esac
+
+          reviewed() {
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --paginate \
+              --jq "[.[] | select(.user.login == \"copilot-pull-request-reviewer[bot]\" and .commit_id == \"$HEAD_SHA\")] | length"
+          }
+          # Poll for up to 20 minutes; a Copilot review event also re-runs this check.
+          for attempt in $(seq 1 80); do
+            if [ "$(reviewed)" -gt 0 ]; then
+              echo "Copilot has reviewed ${HEAD_SHA:0:7}."
+              exit 0
+            fi
+            [ "$attempt" -eq 1 ] && echo "Waiting for Copilot to review ${HEAD_SHA:0:7}..."
+            sleep 15
+          done
+          echo "::error::Copilot hasn't reviewed ${HEAD_SHA:0:7} yet. It will re-run when the review arrives; if Copilot is unavailable, add the skip-copilot-review label."
+          exit 1
