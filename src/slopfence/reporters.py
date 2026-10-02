@@ -12,29 +12,32 @@ from slopfence.models import RULES, Severity
 _SEVERITY_ORDER = [Severity.HIGH, Severity.MEDIUM, Severity.LOW]
 _SARIF_LEVEL = {Severity.HIGH: "error", Severity.MEDIUM: "warning", Severity.LOW: "note"}
 _COLOR = {Severity.HIGH: "\033[31m", Severity.MEDIUM: "\033[33m", Severity.LOW: "\033[36m"}
-_RESET, _BOLD = "\033[0m", "\033[1m"
+_RESET, _BOLD, _DIM, _GREEN = "\033[0m", "\033[1m", "\033[2m", "\033[32m"
 
 
 def text(result: Result, color: bool = False, strict: bool = False) -> str:
-    def paint(s: str, code: str) -> str:
-        return f"{code}{s}{_RESET}" if color else s
+    def paint(s: str, *codes: str) -> str:
+        return f"{''.join(codes)}{s}{_RESET}" if color else s
 
     out: list[str] = []
     for path, group in groupby(result.findings, key=lambda f: f.path):
         out.append(paint(path, _BOLD))
         for f in group:
-            loc = f"{f.line}:{f.col}"
-            sev = paint(f.severity.value, _COLOR[f.severity])
-            out.append(f"  {loc:<8} {f.rule}  {f.message}  [{sev}]")
+            tint = _COLOR[f.severity]
+            loc = paint(f"{f.line}:{f.col}".ljust(8), _DIM)
+            rule = paint(f.rule, _BOLD, tint)
+            sev = paint(f.severity.value, tint)
+            out.append(f"  {loc} {rule}  {f.message}  [{sev}]")
         out.append("")
 
     counts = Counter(f.severity for f in result.findings)
     if result.findings:
-        parts = [f"{counts[s]} {s.value}" for s in _SEVERITY_ORDER if counts[s]]
+        parts = [paint(f"{counts[s]} {s.value}", _COLOR[s]) for s in _SEVERITY_ORDER if counts[s]]
         total = len(result.findings)
-        out.append(f"{total} issue{'s' if total != 1 else ''} ({', '.join(parts)})")
+        summary = paint(f"{total} issue{'s' if total != 1 else ''}", _BOLD)
+        out.append(f"{summary} ({', '.join(parts)})")
     else:
-        out.append(f"No issues found in {result.files_checked} files.")
+        out.append(paint(f"No issues found in {result.files_checked} files.", _GREEN))
     label = "error" if strict else "warning"
     for path in result.parse_errors:
         out.append(f"{label}: could not parse {path} (not valid Python), so it was not checked")

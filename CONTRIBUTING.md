@@ -67,6 +67,16 @@ If you change `.pre-commit-hooks.yaml`, also run the end-to-end hook test (needs
 .github/scripts/test-pre-commit-hook.sh .
 ```
 
+### Re-recording the demo GIF
+
+`docs/demo.gif` is generated from `docs/demo/demo.tape` with [VHS](https://github.com/charmbracelet/vhs). To re-record it after changing the output, run this (needs Docker):
+
+```bash
+docs/demo/record.sh
+```
+
+The demo project is created at record time by `docs/demo/make-project.sh`, so no sloppy files live in the repo.
+
 ### Adding a detector
 
 1. Add the rule to `RULES` in `src/slopfence/models.py`.
