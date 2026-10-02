@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit review settings: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    # Deliberately sloppy fixtures and generated assets: nothing to review.
+    - "!.github/action-fixture/**"
+    - "!docs/demo.gif"
+    - "!docs/brand/*.svg"
+    - "!docs/brand/*.png"
+
+  path_instructions:
+    - path: "src/slopfence/detectors/**"
+      instructions: |
+        slopfence is a linter whose top priority is a low false-positive rate.
+        For every detector change, check that new patterns can't match ordinary
+        human-written code or prose, and that tests cover both cases that SHOULD
+        be flagged and similar-looking cases that should NOT be flagged.
+    - path: "src/slopfence/**"
+      instructions: |
+        The package has no runtime dependencies on Python 3.11+ (tomli only on 3.10)
+        and must support Python 3.10-3.14 on Linux, macOS and Windows. Flag new
+        dependencies, version-specific syntax, and platform-specific path or
+        encoding assumptions. Network access (PyPI lookups) must never produce a
+        finding when the registry is unreachable.
+    - path: "tests/**"
+      instructions: |
+        Tests must not depend on the network or on live PyPI state; use the
+        FakeRegistry fixture or a pinned cache.
+    - path: ".github/workflows/**"
+      instructions: |
+        Check least-privilege `permissions`, and that jobs still work for pull requests
+        from forks. Untrusted input (PR titles, branch names, labels, commit messages)
+        must never be interpolated into `run:` scripts with `${{ }}`, quoted or not:
+        GitHub substitutes expressions before the shell runs. Pass it via `env:` and
+        use the quoted environment variable in the script.
+    - path: "action.yml"
+      instructions: |
+        The composite action must work on Linux, macOS and Windows runners and must
+        not install into the runner's system Python.
+
+chat:
+  auto_reply: true
