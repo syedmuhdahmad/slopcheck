@@ -9,9 +9,9 @@ from pathlib import Path
 
 from slopfence import __version__, reporters
 from slopfence import diff as diffmod
-from slopfence.config import ConfigError, load_config
+from slopfence.config import FAIL_ON, ConfigError, load_config
 from slopfence.engine import run
-from slopfence.models import RULES
+from slopfence.models import RULES, Severity
 from slopfence.registry import OfflineRegistry, PyPIRegistry
 
 EXIT_OK, EXIT_FINDINGS, EXIT_ERROR = 0, 1, 2
@@ -49,6 +49,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude",
         type=lambda v: [p.strip() for p in v.split(",") if p.strip()],
         help="comma-separated paths or globs to skip (overrides config)",
+    )
+    parser.add_argument(
+        "--known-packages",
+        type=lambda v: [p.strip() for p in v.split(",") if p.strip()],
+        help="comma-separated private package names or globs that SLOP001 must accept "
+        "(overrides config)",
+    )
+    parser.add_argument(
+        "--fail-on",
+        choices=FAIL_ON,
+        help="lowest severity that makes the run fail (default: low, i.e. any issue)",
+    )
+    parser.add_argument(
+        "--strict",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="exit 2 if any Python file can't be parsed (--no-strict overrides config)",
     )
     parser.add_argument("--exit-zero", action="store_true", help="exit 0 even if issues are found")
     parser.add_argument("--no-color", action="store_true")
@@ -99,6 +116,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     select = args.select if args.select is not None else config.select
     ignore = args.ignore if args.ignore is not None else config.ignore
     exclude = args.exclude if args.exclude is not None else config.exclude
+    known_packages = (
+        args.known_packages if args.known_packages is not None else config.known_packages
+    )
+    fail_on = Severity(args.fail_on or config.fail_on)
+    strict = args.strict if args.strict is not None else config.strict
 
     changed = None
     if args.diff:
@@ -117,6 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ignore=ignore,
         changed=changed,
         exclude=exclude,
+        known_packages=known_packages,
     )
     if isinstance(registry, PyPIRegistry):
         registry.save()
@@ -124,7 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.format == "json":
         report = reporters.as_json(result)
     elif args.format == "sarif":
-        report = reporters.sarif(result)
+        report = reporters.sarif(result, strict=strict)
     else:
         color = (
             not args.no_color
@@ -132,13 +155,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             and sys.stdout.isatty()
             and "NO_COLOR" not in os.environ
         )
-        report = reporters.text(result, color=color)
+        report = reporters.text(result, color=color, strict=strict)
 
     if args.output:
         args.output.write_text(report + "\n", encoding="utf-8")
     else:
         print(report)
 
-    if result.findings and not args.exit_zero:
+    if args.exit_zero:
+        return EXIT_OK
+    if strict and result.parse_errors:
+        return EXIT_ERROR
+    if any(f.severity.rank >= fail_on.rank for f in result.findings):
         return EXIT_FINDINGS
     return EXIT_OK

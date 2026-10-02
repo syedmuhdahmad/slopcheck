@@ -15,6 +15,9 @@ from tests.conftest import rule_lines
         "# ... rest of the code",
         "# Add your validation here",
         "# placeholder logic, swap out later",
+        "# Hardcoded for demo purposes",
+        "# Static data for demonstration purposes, use the API in production",
+        "# This works for demonstration purposes only",
     ],
 )
 def test_placeholder_flagged(write, check, comment):
@@ -31,6 +34,12 @@ def test_placeholder_flagged(write, check, comment):
         "# This is a stub package designed to roughly emulate the _yaml module",
         "# The `Omit` placeholder value will be visible to Jinja plugins",
         "# Real implementation lives in the C extension",
+        # nltk (#20): human docs that mention demos.
+        "# We do this here just for demo purposes. If the",
+        "# A Scorer for Demo Purposes",
+        # Placeholder word and demo phrase in different sentences (Copilot review on #31).
+        "# Static configuration is documented. Used for demo purposes.",
+        "# Uses a mock server! Kept for demo purposes",
     ],
 )
 def test_placeholder_not_flagged(write, check, comment):
@@ -139,3 +148,17 @@ def test_non_utf8_and_bom_files_are_checked(tmp_path, check):
     result = check("SLOP051")
     assert result.parse_errors == []
     assert sorted((f.path, f.line) for f in result.findings) == [("bom.py", 1), ("latin.py", 3)]
+
+
+@pytest.mark.parametrize(
+    "rel",
+    ["examples/app.py", "demo/app.py", "docs/samples/app.py", "src/demo.py", "src/auth_example.py"],
+)
+def test_placeholders_skipped_in_demo_and_example_code(write, check, rel):
+    write(rel, "# In a real implementation, validate the token\n")
+    assert check("SLOP010").findings == []
+
+
+def test_placeholders_still_flagged_in_similar_names(write, check):
+    write("src/democracy.py", "# In a real implementation, validate the token\n")
+    assert rule_lines(check("SLOP010"), "SLOP010") == [1]

@@ -48,10 +48,15 @@ slopfence --diff main
 | `--offline` | Skip PyPI lookups (disables `SLOP001`) |
 | `--select` / `--ignore` | Comma-separated rule IDs to run or skip, e.g. `--ignore SLOP051` |
 | `--exclude` | Comma-separated paths or globs to skip, e.g. `--exclude migrations,*_pb2.py` |
+| `--known-packages` | Comma-separated private package names or globs that `SLOP001` must accept, e.g. `--known-packages corp-*` |
+| `--fail-on high\|medium\|low` | Lowest severity that fails the run (default `low`: any issue). All issues are still reported |
+| `--strict` / `--no-strict` | Exit `2` if any Python file can't be parsed (by default it's skipped with a warning) |
 | `--exit-zero` | Always exit 0 (report only) |
 | `--list-rules` | Show all rules |
 
-Exit codes: `0` no issues, `1` issues found, `2` error.
+Exit codes: `0` no issues (or none at or above `--fail-on`), `1` issues found, `2` error (bad options or config, or unparseable files with `--strict`).
+
+Run slopfence with a Python at least as new as the syntax your code uses; otherwise newer syntax can't be parsed.
 
 ### Configuration
 
@@ -62,11 +67,14 @@ Add a `[tool.slopfence]` table to the `pyproject.toml` at your project root:
 select = ["SLOP001", "SLOP010", "SLOP020"]  # rules to run (default: all)
 ignore = ["SLOP051"]                         # rules to skip
 exclude = ["migrations", "tests/fixtures/", "*_pb2.py"]
+known-packages = ["corp-auth", "corp-*"]    # private packages that aren't on PyPI
+fail-on = "high"                             # only high-severity issues fail the run
+strict = true                                # unparseable files are an error
 ```
 
 `exclude` works like `.gitignore`: a pattern without a `/` in the middle matches any file or folder name anywhere (`migrations`, `*_pb2.py`), and a pattern with one is relative to the project root (`tests/fixtures/`). Excluded files are never checked, but imports of excluded modules still count as your own code.
 
-Command-line options (`--select`, `--ignore`, `--exclude`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
+Command-line options (`--select`, `--ignore`, `--exclude`, `--known-packages`, `--fail-on`, `--strict`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
 
 ### Ignoring a finding
 
@@ -76,6 +84,10 @@ x = legacy()  # slopfence: ignore
 ```
 
 Put `# slopfence: ignore-file` anywhere in a file to skip it. In `requirements.txt`, add `# slopfence: ignore` to a line.
+
+**Private packages:** if your project uses internal packages that aren't on PyPI, list them once in `known-packages` instead of adding ignore comments everywhere. Names are matched case-insensitively with `-`, `_` and `.` treated alike (so `corp_auth` matches `corp-auth`), and `*` globs work. Known packages are never looked up on PyPI, and imports of them are never flagged.
+
+`SLOP010` (placeholders) also skips test code and demo or example code: files under `demo/`, `examples/` or `samples/` folders, or named like `demo.py` or `auth_example.py`.
 
 ### GitHub Action
 

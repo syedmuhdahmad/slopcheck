@@ -13,6 +13,7 @@ from pathlib import Path
 
 IGNORE_RE = re.compile(r"#\s*slopfence:\s*ignore(?:\[(?P<rules>[A-Z0-9,\s]+)\])?(?!-)", re.I)
 _ESCAPE_SEQ = re.compile(r"\\[ntr]")
+EXAMPLE_DIRS = {"demo", "demos", "example", "examples", "sample", "samples"}
 IGNORE_FILE_RE = re.compile(r"#\s*slopfence:\s*ignore-file\b", re.I)
 
 
@@ -46,6 +47,13 @@ class SourceFile:
             # Relative parts, so a project that lives under ~/tests/ isn't all "test code".
             or bool({"tests", "test"} & set(Path(self.rel).parts[:-1]))
         )
+
+    @property
+    def is_example_file(self) -> bool:
+        """Files under demo/ or examples/ folders, or named demo.py, demo_x.py, x_example.py."""
+        folders = {p.lower() for p in Path(self.rel).parts[:-1]}
+        words = set(self.path.stem.lower().split("_"))
+        return bool(folders & EXAMPLE_DIRS or words & EXAMPLE_DIRS)
 
     def is_ignored(self, rule: str, line: int) -> bool:
         if self.ignore_file:

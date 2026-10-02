@@ -39,7 +39,7 @@ def test_load_config_values(tmp_path):
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        ('[tool.slopfence]\nknown-packages = ["x"]\n', "unknown key(s): known-packages"),
+        ("[tool.slopfence]\nmax-line-length = 100\n", "unknown key(s): max-line-length"),
         ('[tool.slopfence]\nselect = ["SLOP999"]\n', "unknown rule(s) in 'select': SLOP999"),
         ('[tool.slopfence]\nignore = "SLOP010"\n', "'ignore' must be a list of strings"),
         ("[tool.slopfence]\nselect = []\n", "'select' must not be empty"),

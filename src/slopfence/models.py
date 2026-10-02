@@ -9,6 +9,10 @@ class Severity(str, Enum):
     MEDIUM = "medium"
     LOW = "low"
 
+    @property
+    def rank(self) -> int:
+        return {"low": 1, "medium": 2, "high": 3}[self.value]
+
 
 @dataclass(frozen=True)
 class Rule:
