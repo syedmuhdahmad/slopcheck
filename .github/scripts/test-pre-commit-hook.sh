@@ -6,6 +6,14 @@ set -euo pipefail
 repo="$(cd "${1:-.}" && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Pin PyPI answers in slopfence's cache so results don't depend on the live registry
+# (an outage would hide findings; someone registering the fake name would remove one).
+mkdir -p "$work/cache/slopfence"
+now=$(date +%s)
+printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s], "my-local-helpers-zz": [false, %s]}\n' \
+  "$now" "$now" "$now" > "$work/cache/slopfence/pypi.json"
+export SLOPFENCE_CACHE_DIR="$work/cache"
+
 pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1"; echo "$2"; exit 1; }
 

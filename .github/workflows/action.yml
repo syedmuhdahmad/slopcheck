@@ -32,6 +32,16 @@ jobs:
           path: slopfence-src
           persist-credentials: false
 
+      # Pin PyPI answers so results don't depend on the live registry (an outage would
+      # hide SLOP001; someone registering the fake name would remove it).
+      - name: Pin PyPI answers in the slopfence cache
+        run: |
+          dir="$RUNNER_TEMP/slopfence-cache"
+          mkdir -p "$dir/slopfence"
+          now=$(date +%s)
+          printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s]}\n' "$now" "$now" > "$dir/slopfence/pypi.json"
+          echo "SLOPFENCE_CACHE_DIR=$dir" >> "$GITHUB_ENV"
+
       - name: Create fixture project
         run: |
           git init -q -b main
@@ -169,6 +179,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # Pin PyPI answers so results don't depend on the live registry (an outage would
+      # hide SLOP001; someone registering the fake name would remove it).
+      - name: Pin PyPI answers in the slopfence cache
+        run: |
+          dir="$RUNNER_TEMP/slopfence-cache"
+          mkdir -p "$dir/slopfence"
+          now=$(date +%s)
+          printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s]}\n' "$now" "$now" > "$dir/slopfence/pypi.json"
+          echo "SLOPFENCE_CACHE_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Scan the committed fixture project
         id: scan
