@@ -1,7 +1,7 @@
 # slopfence
 
-[![PyPI](https://img.shields.io/pypi/v/slopfence)](https://pypi.org/project/slopfence/)
-[![Python](https://img.shields.io/pypi/pyversions/slopfence)](https://pypi.org/project/slopfence/)
+[![PyPI](https://img.shields.io/pypi/v/slopfence?cacheSeconds=3600)](https://pypi.org/project/slopfence/)
+[![Python](https://img.shields.io/pypi/pyversions/slopfence?cacheSeconds=3600)](https://pypi.org/project/slopfence/)
 [![CI](https://github.com/syedmuhdahmad/slopfence/actions/workflows/ci.yml/badge.svg)](https://github.com/syedmuhdahmad/slopfence/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
