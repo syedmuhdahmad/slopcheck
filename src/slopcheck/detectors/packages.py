@@ -152,6 +152,46 @@ def _suppresses_slop001(line: str) -> bool:
     return rules is None or "SLOP001" in {r.strip().upper() for r in rules.split(",")}
 
 
+def toml_comments(text: str) -> list[str]:
+    """The comment part of each line ("" if none), ignoring "#" inside TOML strings.
+
+    Tracks multi-line strings across lines so quoted values can never carry
+    a slopcheck directive.
+    """
+    comments: list[str] = []
+    multiline: str | None = None
+    for line in text.split("\n"):
+        comment, i = "", 0
+        while i < len(line):
+            if multiline:
+                end = line.find(multiline, i)
+                if end == -1:
+                    break
+                i, multiline = end + 3, None
+                continue
+            if line.startswith(('"""', "'''"), i):
+                multiline, i = line[i : i + 3], i + 3
+                continue
+            ch = line[i]
+            if ch in "\"'":
+                j = i + 1
+                while j < len(line) and line[j] != ch:
+                    j += 2 if ch == '"' and line[j] == "\\" else 1
+                i = j + 1
+                continue
+            if ch == "#":
+                comment = line[i:]
+                break
+            i += 1
+        comments.append(comment)
+    return comments
+
+
+def _requirements_comment(line: str) -> str:
+    m = _REQ_COMMENT.search(line)
+    return m.group(0) if m else ""
+
+
 def parse_dependency_file(path: Path, root: Path) -> list[Dependency]:
     text = read_source(path)
     if text is None:
@@ -162,7 +202,12 @@ def parse_dependency_file(path: Path, root: Path) -> list[Dependency]:
         if path.name == "pyproject.toml"
         else _parse_requirements(text, rel)
     )
-    if IGNORE_FILE_RE.search(text):
+    # Directives only count inside real comments, never inside values or URLs.
+    if path.name == "pyproject.toml":
+        comments = toml_comments(text)
+    else:
+        comments = [_requirements_comment(line) for line in text.splitlines()]
+    if any(IGNORE_FILE_RE.search(c) for c in comments):
         for dep in deps:
             dep.suppressed = True
     return deps
@@ -179,7 +224,7 @@ def _parse_requirements(text: str, rel: str) -> list[Dependency]:
     )
     deps = []
     for lineno, raw in enumerate(lines, start=1):
-        suppressed = _suppresses_slop001(raw)
+        suppressed = _suppresses_slop001(_requirements_comment(raw))
         line = _REQ_COMMENT.sub("", raw).strip()
         if not line:
             continue
@@ -221,6 +266,7 @@ class _LineFinder:
 
     def __init__(self, text: str) -> None:
         self.lines = text.splitlines()
+        self.comments = toml_comments(text)
         self.ranges = _table_ranges(self.lines)
         # (line, column) of entries already matched, so repeated specs map to
         # successive occurrences and several entries can share one line.
@@ -276,7 +322,7 @@ class _LineFinder:
         )
 
     def suppressed(self, line: int) -> bool:
-        return 0 < line <= len(self.lines) and _suppresses_slop001(self.lines[line - 1])
+        return 0 < line <= len(self.comments) and _suppresses_slop001(self.comments[line - 1])
 
 
 def _parse_pyproject(text: str, rel: str) -> list[Dependency]:

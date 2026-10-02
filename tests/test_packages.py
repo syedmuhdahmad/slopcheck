@@ -216,3 +216,48 @@ def test_every_import_occurrence_reported(write, check):
     result = check("SLOP001", registry=FakeRegistry(set()))
     # The ignored first occurrence must not hide the second one.
     assert rule_lines(result, "SLOP001") == [2]
+
+
+def test_directives_inside_toml_strings_are_ignored(write, check):
+    write(
+        "pyproject.toml",
+        """
+        [project]
+        name = "demo"
+        description = "# slopcheck: ignore-file"
+        readme = \"\"\"
+        # slopcheck: ignore-file
+        \"\"\"
+        dependencies = [
+            "ghost-one",
+            "ghost-two",  # slopcheck: ignore
+            "ghost-three # slopcheck: ignore",
+        ]
+        """,
+    )
+    result = check("SLOP001", registry=FakeRegistry(set()))
+    assert rule_lines(result, "SLOP001") == [8, 10]
+
+
+def test_include_group_dependencies_are_checked_once(write, check):
+    # Each group is parsed on its own, so included entries are already checked.
+    write(
+        "pyproject.toml",
+        """
+        [project]
+        name = "demo"
+
+        [dependency-groups]
+        dev = ["fake-pkg"]
+        lint = [{include-group = "dev"}, "ruff"]
+        """,
+    )
+    result = check("SLOP001", registry=FakeRegistry({"ruff"}))
+    assert rule_lines(result, "SLOP001") == [5]
+
+
+def test_toml_comments():
+    from slopcheck.detectors.packages import toml_comments
+
+    text = 'a = "x # no"  # yes\nb = \'# no\'\nc = """\n# no\n"""  # end\n# top'
+    assert toml_comments(text) == ["# yes", "", "", "", "# end", "# top"]
