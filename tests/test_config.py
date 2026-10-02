@@ -127,6 +127,7 @@ def test_is_excluded(path, patterns, excluded):
 
 
 def test_excluded_modules_still_count_as_local(write, tmp_path):
+    """Excluded files aren't checked, but importing them isn't a missing package."""
     from slopfence.engine import run
 
     write("src/app.py", "import generated_client_zz\n")

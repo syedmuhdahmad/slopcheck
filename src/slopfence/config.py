@@ -51,6 +51,7 @@ def _str_list(table: dict, key: str, where: str) -> list[str]:
 
 
 def _bool(table: dict, key: str, where: str) -> bool:
+    """Return ``table[key]``, which must be a TOML boolean."""
     value = table[key]
     if not isinstance(value, bool):
         raise ConfigError(f"{where}: '{key}' must be true or false")

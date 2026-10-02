@@ -26,6 +26,7 @@ def _rule_list(value: str) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser. Options left unset default to None so config can fill them."""
     parser = argparse.ArgumentParser(
         prog="slopfence",
         description="Find the junk AI coding assistants leave behind.",
@@ -97,6 +98,7 @@ def _use_utf8_output() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run slopfence from the command line and return the exit code (0 ok, 1 issues, 2 error)."""
     _use_utf8_output()
     args = build_parser().parse_args(argv)
 

@@ -26,10 +26,12 @@ def project(tmp_path, monkeypatch):
     real_exists = PyPIRegistry.exists
 
     def exists(self, name):
+        """Record every name slopfence asks the registry about."""
         asked.append(name)
         return real_exists(self, name)
 
     def no_network(self, key):
+        """Fail the test if any lookup isn't answered from the pinned cache."""
         raise AssertionError(f"unexpected network lookup for {key!r}")
 
     monkeypatch.setattr(PyPIRegistry, "exists", exists)
@@ -38,10 +40,12 @@ def project(tmp_path, monkeypatch):
 
 
 def _findings(capsys):
+    """(path, line) of each finding in the JSON report printed by the last run."""
     return [(f["path"], f["line"]) for f in json.loads(capsys.readouterr().out)["findings"]]
 
 
 def test_imports_never_reach_the_registry_by_default(project, capsys):
+    """By default only declared dependencies are looked up, never import names."""
     _, asked = project
     assert main([".", "--format", "json"]) == 0
     assert _findings(capsys) == []
@@ -50,6 +54,7 @@ def test_imports_never_reach_the_registry_by_default(project, capsys):
 
 
 def test_check_imports_opt_in_from_cli_and_config(project, capsys):
+    """--check-imports and check-imports = true opt in; --no-check-imports wins over config."""
     root, asked = project
     assert main([".", "--format", "json", "--check-imports"]) == 1
     assert _findings(capsys) == [("app.py", 2)]
@@ -66,6 +71,7 @@ def test_check_imports_opt_in_from_cli_and_config(project, capsys):
 
 
 def test_offline_makes_no_lookups_at_all(project, capsys):
+    """--offline sends nothing, even with --check-imports."""
     _, asked = project
     assert main([".", "--format", "json", "--offline", "--check-imports"]) == 0
     assert asked == []

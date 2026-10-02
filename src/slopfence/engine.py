@@ -93,6 +93,12 @@ def run(
     known_packages: Sequence[str] = (),
     check_imports: bool = False,
 ) -> Result:
+    """Check the given paths and return the findings.
+
+    SLOP001 always checks dependency files. Imports in source code are only looked
+    up on PyPI with ``check_imports``, because that sends their names to pypi.org
+    and can reveal private package names.
+    """
     rules = set(select) if select else set(RULES)
     rules -= set(ignore)
     root = root.resolve()

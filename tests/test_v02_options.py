@@ -21,6 +21,7 @@ def _pyproject(tmp_path, body):
 
 
 def test_known_packages_skip_dependency_and_import_checks(write, tmp_path):
+    """known-packages are accepted without a lookup, in dependency files and imports."""
     write("requirements.txt", "corp-auth\nCorp_Billing\nflask-jwt-simple-auth\n")
     write("src/app.py", "import corp_auth\nimport corp_billing\nimport corp_tools_zz\n")
     registry = FakeRegistry(set())

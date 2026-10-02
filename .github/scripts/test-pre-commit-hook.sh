@@ -14,9 +14,12 @@ printf '{"requests": [true, %s], "flask-jwt-simple-auth": [false, %s], "my-local
   "$now" "$now" "$now" > "$work/cache/slopfence/pypi.json"
 export SLOPFENCE_CACHE_DIR="$work/cache"
 
+# pass MSG: report a passed check.
 pass() { echo "ok   - $1"; }
+# fail MSG OUTPUT: report a failed check with the hook output, then stop.
 fail() { echo "FAIL - $1"; echo "$2"; exit 1; }
 
+# make_repo NAME: create an empty git repository in $work/NAME and cd into it.
 make_repo() {
   rm -rf "$work/$1" && mkdir -p "$work/$1" && cd "$work/$1"
   git init -q -b main

@@ -64,6 +64,7 @@ def test_poetry_dependencies(tmp_path, write):
 
 
 def test_hallucinated_import_flagged(write, check):
+    """An import of a package missing from PyPI is reported; stdlib and local ones aren't."""
     write(
         "src/app.py",
         """
@@ -87,6 +88,7 @@ def test_hallucinated_import_flagged(write, check):
 
 
 def test_installed_and_declared_imports_not_flagged(write, check):
+    """Installed and declared packages are trusted without asking PyPI about the import."""
     write("requirements.txt", "my-declared-lib\n")
     write("src/app.py", "import pytest\nimport my_declared_lib\n")
     registry = FakeRegistry({"my-declared-lib"})
@@ -95,6 +97,8 @@ def test_installed_and_declared_imports_not_flagged(write, check):
 
 
 def test_unreachable_registry_never_flags(write, check):
+    """If PyPI can't be reached, nothing is reported as missing."""
+
     class Down:
         def exists(self, name):
             return None
@@ -105,7 +109,8 @@ def test_unreachable_registry_never_flags(write, check):
 
 
 def test_imports_are_not_looked_up_by_default(write, check):
-    # Sending import names to PyPI can leak private package names, so it's opt-in (#34).
+    """Only dependency files are checked by default: sending import names to PyPI
+    can leak private package names, so import lookups are opt-in (#34)."""
     write("requirements.txt", "ghost-dep\n")
     write("src/app.py", "import corp_secret_auth\n")
     registry = FakeRegistry(set())
@@ -121,6 +126,7 @@ def test_offline_skips_lookups(write, check):
 
 
 def test_single_file_still_knows_project_modules(write, tmp_path):
+    """Checking one file still resolves the project's own modules and dependencies."""
     from slopfence.engine import run
 
     write("requirements.txt", "my-internal-dep\n")
@@ -153,6 +159,7 @@ def test_requirements_ignore_file(write, check):
 
 
 def test_ignored_and_external_requirements_stay_declared(write, check):
+    """Ignored and non-PyPI requirements still count as declared for imports."""
     write(
         "requirements.txt",
         """
@@ -216,6 +223,7 @@ def test_pyproject_external_sources(tmp_path, write):
 
 
 def test_every_import_occurrence_reported(write, check):
+    """Each import of a missing package is reported on its own line."""
     write(
         "src/app.py",
         """
