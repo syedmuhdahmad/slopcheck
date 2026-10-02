@@ -76,9 +76,16 @@ def _does_nothing(body: list[ast.stmt]) -> bool:
 
 
 def _only_cleanup_calls(body: list[ast.stmt]) -> bool:
-    """A try body that only closes, deletes or stops things."""
+    """A try body that only closes, deletes or stops things, maybe in a loop."""
+    if len(body) == 1 and isinstance(body[0], ast.For):
+        body = body[0].body  # for d in reversed(created): os.rmdir(d)
     calls = [s.value for s in body if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)]
     return len(calls) == len(body) and all(_last_name(c.func) in CLEANUP_CALLS for c in calls)
+
+
+def _only_imports(body: list[ast.stmt]) -> bool:
+    """A try body that only imports: an optional dependency that may be broken."""
+    return all(isinstance(stmt, (ast.Import, ast.ImportFrom)) for stmt in body)
 
 
 def _atexit_functions(tree: ast.Module) -> set[str]:
@@ -125,7 +132,11 @@ def check_swallowed_exceptions(src: SourceFile) -> Iterator[Finding]:
     owners = _enclosing_functions(src.tree)
     atexit_funcs = _atexit_functions(src.tree)
     for node in ast.walk(src.tree):
-        if not isinstance(node, ast.Try) or _only_cleanup_calls(node.body):
+        if (
+            not isinstance(node, ast.Try)
+            or _only_cleanup_calls(node.body)
+            or _only_imports(node.body)
+        ):
             continue
         func = owners.get(id(node), "")
         if func in CLEANUP_FUNCTIONS or func in atexit_funcs:
@@ -313,7 +324,8 @@ def _candidate_functions(
 
 def check_stub_functions(src: SourceFile) -> Iterator[Finding]:
     """SLOP011: a function whose docstring promises work but whose body is a stub."""
-    if src.is_test_file or src.is_example_file:
+    # .pyi stubs are all stubs by design (discovery only picks .py files anyway).
+    if src.is_test_file or src.is_example_file or src.path.suffix == ".pyi":
         return
     for func in _candidate_functions(src.tree):
         doc = ast.get_docstring(func)

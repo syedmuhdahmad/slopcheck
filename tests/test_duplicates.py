@@ -303,3 +303,17 @@ def test_alternative_definitions_in_one_file(write, check):
     body = FORMAT_DATE.replace("\n    ", "\n        ").replace("def ", "    def ")
     write("compat.py", "import sys\n\nif sys.version_info >= (3, 12):\n" + body + "else:\n" + body)
     assert check("SLOP030").findings == []
+
+
+def test_long_constants_that_differ_late_are_not_identical(write, check):
+    """SQL statements sharing a long prefix are different code, not copies."""
+    query = """
+def {name}(conn, user_id):
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, email, created_at FROM users WHERE {col} = %s", (user_id,))
+    row = cursor.fetchone()
+    return row
+"""
+    write("a.py", query.format(name="by_id", col="id"))
+    write("b.py", query.format(name="by_team", col="team_id"))
+    assert check("SLOP030").findings == []

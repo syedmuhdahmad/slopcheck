@@ -157,3 +157,42 @@ def test_stub_function_skips_tests(write, check):
         'def fetch_user():\n    """Fetch a fake user."""\n    return {"id": 1}\n',
     )
     assert check("SLOP011").findings == []
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        # An optional dependency that may be missing or broken.
+        "try:\n    import ujson as json\nexcept Exception:\n    pass\n",
+        "try:\n    from lxml import etree\n    import xmltodict\nexcept Exception:\n    pass\n",
+        # Cleanup in a loop.
+        "try:\n    for d in reversed(created):\n        os.rmdir(d)\nexcept Exception:\n    pass\n",
+    ],
+)
+def test_swallowed_exception_optional_imports_and_cleanup_loops(write, check, code):
+    """Optional imports and cleanup loops ignore errors on purpose."""
+    write("app.py", code)
+    assert check("SLOP040").findings == []
+
+
+def test_swallowed_exception_still_flags_loops_doing_real_work(write, check):
+    """A loop that saves data is not cleanup."""
+    write("app.py", "try:\n    for u in users:\n        save(u)\nexcept Exception:\n    pass\n")
+    assert rule_lines(check("SLOP040"), "SLOP040") == [4]
+
+
+def test_stub_function_skips_pyi_files(tmp_path):
+    """.pyi files are interface stubs: never reported, even if one reaches the detector."""
+    import ast
+
+    from slopfence.detectors.code_quality import check_stub_functions
+    from slopfence.engine import discover
+    from slopfence.source import SourceFile
+
+    text = 'def fetch(user_id) -> dict:\n    """Fetch the user."""\n    ...\n'
+    path = tmp_path / "api.pyi"
+    path.write_text(text)
+    src = SourceFile(path=path, rel="api.pyi", text=text, tree=ast.parse(text))
+    assert list(check_stub_functions(src)) == []
+    # Discovery only picks up .py files, so a full run never sees it either.
+    assert discover([tmp_path]) == ([], [])
