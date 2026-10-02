@@ -24,10 +24,13 @@ else:  # pragma: no cover
 
 PUBLIC_INDEX_HOSTS = ("pypi.org", "pythonhosted.org")
 
+# The platform whose config locations are searched (tests check the others too).
+PLATFORM = sys.platform
+
 # System-wide config files at fixed paths (Linux and macOS). Folders that come from
 # environment variables (XDG_CONFIG_DIRS, PROGRAMDATA...) are handled separately.
 PIP_SYSTEM_FILES: tuple[Path, ...] = (Path("/etc/pip.conf"),) + (
-    (Path("/Library/Application Support/pip/pip.conf"),) if sys.platform == "darwin" else ()
+    (Path("/Library/Application Support/pip/pip.conf"),) if PLATFORM == "darwin" else ()
 )
 UV_SYSTEM_FILES: tuple[Path, ...] = (Path("/etc/uv/uv.toml"),)
 
@@ -117,7 +120,7 @@ def _pip_config_files(environ: Mapping[str, str], home: Path) -> Iterator[Path]:
     explicit = environ.get("PIP_CONFIG_FILE")
     if explicit == os.devnull:  # pip's documented way to disable all config files
         return
-    if sys.platform == "win32":
+    if PLATFORM == "win32":
         program_data = environ.get("PROGRAMDATA", r"C:\ProgramData")
         yield Path(program_data, "pip", "pip.ini")
         appdata = environ.get("APPDATA")
@@ -127,14 +130,22 @@ def _pip_config_files(environ: Mapping[str, str], home: Path) -> Iterator[Path]:
         for base in environ.get("XDG_CONFIG_DIRS", "/etc/xdg").split(os.pathsep):
             if base:
                 yield Path(base, "pip", "pip.conf")
+        if PLATFORM == "darwin":
+            # pip 26.2+ on macOS: global config in XDG_DATA_DIRS, user config in
+            # XDG_DATA_HOME. Older locations are still checked below.
+            for base in environ.get("XDG_DATA_DIRS", "").split(os.pathsep):
+                if base:
+                    yield Path(base, "pip", "pip.conf")
+            if environ.get("XDG_DATA_HOME"):
+                yield Path(environ["XDG_DATA_HOME"], "pip", "pip.conf")
         yield from PIP_SYSTEM_FILES
-        if sys.platform == "darwin":
+        if PLATFORM == "darwin":
             yield home / "Library" / "Application Support" / "pip" / "pip.conf"
         yield home / ".pip" / "pip.conf"
         yield Path(environ.get("XDG_CONFIG_HOME") or home / ".config", "pip", "pip.conf")
     virtual_env = environ.get("VIRTUAL_ENV")
     if virtual_env:
-        yield Path(virtual_env, "pip.ini" if sys.platform == "win32" else "pip.conf")
+        yield Path(virtual_env, "pip.ini" if PLATFORM == "win32" else "pip.conf")
     if explicit:
         yield Path(explicit)
 
@@ -162,7 +173,7 @@ def _uv_config_files(root: Path, environ: Mapping[str, str], home: Path) -> Iter
         yield Path(environ["UV_CONFIG_FILE"])
         return
     yield root / "uv.toml"
-    if sys.platform == "win32":
+    if PLATFORM == "win32":
         appdata = environ.get("APPDATA")
         yield Path(appdata, "uv", "uv.toml") if appdata else home / "uv" / "uv.toml"
         yield Path(environ.get("PROGRAMDATA", r"C:\ProgramData"), "uv", "uv.toml")

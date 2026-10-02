@@ -104,6 +104,22 @@ def test_private_index_in_user_pip_config(tmp_path, body):
     assert found == f"pip configuration ({conf})"
 
 
+@pytest.mark.parametrize("var", ["XDG_DATA_DIRS", "XDG_DATA_HOME"])
+def test_macos_pip_config_in_xdg_data_dirs(tmp_path, monkeypatch, var):
+    """pip 26.2+ on macOS reads config from XDG_DATA_DIRS and XDG_DATA_HOME."""
+    from slopfence import indexes
+
+    monkeypatch.setattr(indexes, "PLATFORM", "darwin")
+    conf = tmp_path / "data" / "pip" / "pip.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(f"[global]\nindex-url = {PRIVATE}\n")
+    env = isolated_env(tmp_path, UV_NO_CONFIG="1", **{var: str(tmp_path / "data")})
+    assert find_private_index(tmp_path, env, tmp_path) == f"pip configuration ({conf})"
+    # Elsewhere pip doesn't read these folders, so neither does slopfence.
+    monkeypatch.setattr(indexes, "PLATFORM", "linux")
+    assert find_private_index(tmp_path, env, tmp_path) is None
+
+
 def test_pip_config_file_variable(tmp_path):
     """PIP_CONFIG_FILE adds a config file, and os.devnull switches config files off."""
     conf = tmp_path / "custom.conf"
