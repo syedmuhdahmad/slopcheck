@@ -57,6 +57,7 @@ slopfence --diff main
 | `--select` / `--ignore` | Comma-separated rule IDs to run or skip, e.g. `--ignore SLOP051` |
 | `--exclude` | Comma-separated paths or globs to skip, e.g. `--exclude migrations,*_pb2.py` |
 | `--known-packages` | Comma-separated private package names or globs that `SLOP001` must accept, e.g. `--known-packages corp-*` |
+| `--detect-private-index` / `--no-detect-private-index` | Skip PyPI lookups when pip or uv is set up with a private index (on by default). Turn it off if that index only mirrors PyPI. See [Private package indexes](#private-package-indexes) |
 | `--fail-on high\|medium\|low` | Lowest severity that fails the run (default `low`: any issue). All issues are still reported |
 | `--strict` / `--no-strict` | Exit `2` if any Python file can't be parsed (by default it's skipped with a warning) |
 | `--exit-zero` | Always exit 0 (report only) |
@@ -77,13 +78,14 @@ ignore = ["SLOP051"]                         # rules to skip
 exclude = ["migrations", "tests/fixtures/", "*_pb2.py"]
 known-packages = ["corp-auth", "corp-*"]    # private packages that aren't on PyPI
 check-imports = false                        # true also looks up imports on PyPI (default: false)
+detect-private-index = true                  # false if your private index only mirrors PyPI
 fail-on = "high"                             # only high-severity issues fail the run
 strict = true                                # unparseable files are an error
 ```
 
 `exclude` works like `.gitignore`: a pattern without a `/` in the middle matches any file or folder name anywhere (`migrations`, `*_pb2.py`), and a pattern with one is relative to the project root (`tests/fixtures/`). Excluded files are never checked, but imports of excluded modules still count as your own code.
 
-Command-line options (`--select`, `--ignore`, `--exclude`, `--known-packages`, `--check-imports`, `--fail-on`, `--strict`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
+Command-line options (`--select`, `--ignore`, `--exclude`, `--known-packages`, `--check-imports`, `--detect-private-index`, `--fail-on`, `--strict`) replace the matching config values. Unknown keys and rule IDs are reported as errors (exit code `2`).
 
 ### Ignoring a finding
 
@@ -105,11 +107,30 @@ slopfence only talks to one server, `https://pypi.org`, and only for `SLOP001`. 
 | Names sent to PyPI | When |
 |---|---|
 | Dependencies declared in `requirements*.txt` and `pyproject.toml` | By default. These names are already meant for a package index. Entries installed from URLs, paths or git are never sent. Neither is any dependency in a file that uses a private index: `--index-url` / `--extra-index-url` in a requirements file, a `[[tool.poetry.source]]` or `[[tool.uv.index]]` that isn't PyPI (unless it's `explicit`, which only affects the dependencies that name it), or a per-dependency Poetry `source` or `[tool.uv.sources]` entry |
-| Imports in your source code that aren't stdlib, installed, declared or part of your project | **Only with `--check-imports`** (or `check-imports = true`). This can catch an invented package that was imported but never declared, but for private code it may reveal internal package names |
-
-Index settings outside your project files (`pip.conf`, `uv.toml`, `PIP_INDEX_URL` and similar) aren't read yet ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17)). If you install private packages that way, list them in `known-packages` or use `--offline`.
+| Imports in your source code that aren't stdlib, installed, part of your project, or provided by a declared or locked package | **Only with `--check-imports`** (or `check-imports = true`). This can catch an invented package that was imported but never declared, but for private code it may reveal internal package names |
 
 Names in `known-packages` are never sent. Answers are cached for a day (missing) or a week (found) in `~/.cache/slopfence`, so repeated runs send fewer requests. `--offline` sends nothing at all.
+
+### Private package indexes
+
+If your packages may come from an index other than PyPI, a name that PyPI doesn't know could be a private package. slopfence then doesn't report it and doesn't send it to PyPI. It looks for private indexes in:
+
+| Where | What counts as private |
+|---|---|
+| `requirements*.txt` | `-i` / `--index-url` / `--extra-index-url` with a non-PyPI URL: that file's packages |
+| `pyproject.toml` | `[[tool.poetry.source]]` (except `explicit` ones), `[[tool.uv.index]]` (except `explicit` ones), `[tool.uv] index-url` / `extra-index-url` (also under `[tool.uv.pip]`), `[[tool.pdm.source]]`: that file's packages. A per-dependency Poetry `source` or `[tool.uv.sources]` entry: that package |
+| `Pipfile`, `Pipfile.lock` | A `[[source]]` that isn't PyPI |
+| Environment variables | `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `UV_INDEX`, `UV_DEFAULT_INDEX`, `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL` |
+| pip configuration | `pip.conf` / `pip.ini` in pip's global, user and virtualenv locations, and `PIP_CONFIG_FILE` (`[global]` and `[install]` sections) |
+| uv configuration | `uv.toml` in the project, user and system config folders, or `UV_CONFIG_FILE` (`UV_NO_CONFIG` turns this off), including its `[pip]` table used by `uv pip install` |
+
+A private index in a project file stops lookups for that file's dependencies, and for imports with `--check-imports`. A private index in your **environment** (variables, pip or uv configuration) could serve any package, so `SLOP001` makes **no lookups at all** and the report says so in a note. An index is public only if its host is `pypi.org` or `pythonhosted.org`. slopfence never prints index URLs, because they can contain credentials.
+
+If your company index only **mirrors** PyPI, set `detect-private-index = false` (or pass `--no-detect-private-index`) to check packages against PyPI again, and list your own private packages in `known-packages`.
+
+### Imports with a different package name
+
+With `--check-imports`, an import isn't looked up when a declared dependency or a locked package provides it, even if the names differ and the package isn't installed where slopfence runs. For example, `import bs4` is covered by `beautifulsoup4`, `import dateutil` by `python-dateutil`, and `from google.cloud import storage` by `google-cloud-storage`. slopfence reads `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock` and `Pipfile`, so indirect dependencies count too (`import idna` when only `requests` is declared).
 
 ### GitHub Action
 
@@ -301,8 +322,8 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 - [x] Test the GitHub Action in a real workflow, including SARIF upload ([#13](https://github.com/syedmuhdahmad/slopfence/issues/13))
 - [x] Test the pre-commit hook with `pre-commit` ([#14](https://github.com/syedmuhdahmad/slopfence/issues/14))
 - [x] Allowlist for private packages ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
-- [ ] Better import-name to package-name mapping ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
-- [ ] Detect private indexes from `pip.conf`, uv and Poetry ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
+- [x] Better import-name to package-name mapping ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
+- [x] Detect private indexes from `pip.conf`, uv and Poetry ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
 - [x] `--fail-on` severity threshold ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
 - [x] Option to fail on unparseable files ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
 - [x] Fewer `SLOP010` false positives from "for demo purposes" ([#20](https://github.com/syedmuhdahmad/slopfence/issues/20))

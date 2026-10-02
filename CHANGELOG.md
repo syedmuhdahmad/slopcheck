@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `fail-on` config and `--fail-on` option to choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
 - `check-imports` config and `--check-imports` / `--no-check-imports` options ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
 - `SLOP001` recognises project-wide private indexes in `pyproject.toml` (`[[tool.poetry.source]]`, `[[tool.uv.index]]`, `[tool.uv] index-url` / `extra-index-url`): dependencies in that file are no longer reported or sent to PyPI ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+- `SLOP001` detects private package indexes in the environment: `PIP_INDEX_URL` and the other pip and uv variables, `pip.conf` / `pip.ini`, `uv.toml`, and Pipfile sources. Then it makes no PyPI lookups and adds a note to the report. New `detect-private-index` config and `--detect-private-index` / `--no-detect-private-index` options for indexes that only mirror PyPI ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
+- `SLOP001` import checks know which package provides an import even when the names differ and the package isn't installed (`bs4` from `beautifulsoup4`, `google.cloud` from `google-cloud-storage`), and read `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock` and `Pipfile` for indirect dependencies ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
+- Reports can carry notes, e.g. why `SLOP001` skipped lookups: text output prints them, JSON has a `notes` list, and SARIF has `note` tool notifications
 - `strict` config and `--strict` option: unparseable Python files exit with code 2. Parse errors are now also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
 
 ### Changed

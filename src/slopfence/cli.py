@@ -11,6 +11,7 @@ from slopfence import __version__, reporters
 from slopfence import diff as diffmod
 from slopfence.config import FAIL_ON, ConfigError, load_config
 from slopfence.engine import run
+from slopfence.indexes import find_private_index
 from slopfence.models import RULES, Severity
 from slopfence.registry import OfflineRegistry, PyPIRegistry
 
@@ -66,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="also look up unknown imports in source code on PyPI; this sends their names to "
         "pypi.org (default: off, only dependency files are checked; --no-check-imports "
         "overrides config)",
+    )
+    parser.add_argument(
+        "--detect-private-index",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="skip PyPI lookups when pip or uv is configured with a non-PyPI index "
+        "(PIP_INDEX_URL, pip.conf, uv.toml...), since missing packages may be private "
+        "(default: on; --no-detect-private-index if that index only mirrors PyPI)",
     )
     parser.add_argument(
         "--fail-on",
@@ -132,6 +141,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.known_packages if args.known_packages is not None else config.known_packages
     )
     check_imports = args.check_imports if args.check_imports is not None else config.check_imports
+    detect_private_index = (
+        args.detect_private_index
+        if args.detect_private_index is not None
+        else config.detect_private_index
+    )
     fail_on = Severity(args.fail_on or config.fail_on)
     strict = args.strict if args.strict is not None else config.strict
 
@@ -144,6 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_ERROR
 
     registry = OfflineRegistry() if args.offline else PyPIRegistry()
+    private_index = find_private_index(root) if detect_private_index and not args.offline else None
     result = run(
         args.paths,
         root,
@@ -154,6 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         exclude=exclude,
         known_packages=known_packages,
         check_imports=check_imports,
+        private_index=private_index,
     )
     if isinstance(registry, PyPIRegistry):
         registry.save()

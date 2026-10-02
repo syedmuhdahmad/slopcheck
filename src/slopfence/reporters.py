@@ -16,6 +16,8 @@ _RESET, _BOLD, _DIM, _GREEN = "\033[0m", "\033[1m", "\033[2m", "\033[32m"
 
 
 def text(result: Result, color: bool = False, strict: bool = False) -> str:
+    """Human-readable report: findings grouped by file, a summary, then warnings and notes."""
+
     def paint(s: str, *codes: str) -> str:
         return f"{''.join(codes)}{s}{_RESET}" if color else s
 
@@ -41,10 +43,12 @@ def text(result: Result, color: bool = False, strict: bool = False) -> str:
     label = "error" if strict else "warning"
     for path in result.parse_errors:
         out.append(f"{label}: could not parse {path} (not valid Python), so it was not checked")
+    out.extend(f"note: {note}" for note in result.notes)
     return "\n".join(out)
 
 
 def as_json(result: Result) -> str:
+    """Machine-readable report with findings, parse errors and notes."""
     return json.dumps(
         {
             "version": __version__,
@@ -62,12 +66,14 @@ def as_json(result: Result) -> str:
                 for f in result.findings
             ],
             "parse_errors": result.parse_errors,
+            "notes": result.notes,
         },
         indent=2,
     )
 
 
 def sarif(result: Result, strict: bool = False) -> str:
+    """SARIF 2.1.0 report; parse errors and notes become tool notifications."""
     rules = [
         {
             "id": rule.id,
@@ -134,7 +140,8 @@ def sarif(result: Result, strict: bool = False) -> str:
                                 ],
                             }
                             for path in result.parse_errors
-                        ],
+                        ]
+                        + [{"level": "note", "message": {"text": note}} for note in result.notes],
                     }
                 ],
                 "results": results,

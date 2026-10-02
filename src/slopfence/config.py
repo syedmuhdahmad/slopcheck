@@ -21,6 +21,7 @@ KNOWN_KEYS = {
     "exclude",
     "known-packages",
     "check-imports",
+    "detect-private-index",
     "fail-on",
     "strict",
 }
@@ -38,6 +39,7 @@ class Config:
     exclude: list[str] = field(default_factory=list)
     known_packages: list[str] = field(default_factory=list)
     check_imports: bool = False
+    detect_private_index: bool = True
     fail_on: str = "low"
     strict: bool = False
     path: Path | None = None
@@ -109,6 +111,8 @@ def load_config(root: Path) -> Config:
         config.fail_on = value
     if "check-imports" in table:
         config.check_imports = _bool(table, "check-imports", where)
+    if "detect-private-index" in table:
+        config.detect_private_index = _bool(table, "detect-private-index", where)
     if "strict" in table:
         config.strict = _bool(table, "strict", where)
     return config

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import textwrap
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from slopfence import indexes
 from slopfence.engine import Result, run
 from slopfence.registry import OfflineRegistry
 
@@ -24,6 +26,29 @@ class FakeRegistry:
 
         self.queries.append(name)
         return normalize(name) in self.existing
+
+
+INDEX_ENV_VARS = (
+    "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "UV_INDEX",
+    "UV_DEFAULT_INDEX",
+    "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_CONFIG_FILE",
+)
+
+
+@pytest.fixture(autouse=True)
+def no_index_config(monkeypatch):
+    """Keep the machine's pip/uv index settings (pip.conf, PIP_INDEX_URL...) out of tests."""
+    for var in INDEX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("PIP_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("UV_NO_CONFIG", "1")
+    # Tests that switch config files back on must never see /etc/pip.conf and friends.
+    monkeypatch.setattr(indexes, "PIP_SYSTEM_FILES", ())
+    monkeypatch.setattr(indexes, "UV_SYSTEM_FILES", ())
 
 
 @pytest.fixture
