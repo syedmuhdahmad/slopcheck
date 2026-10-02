@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from slopfence import diff as diffmod
+from slopfence.config import is_excluded
 from slopfence.detectors import FILE_DETECTORS
 from slopfence.detectors.packages import PackageChecker, build_index
 from slopfence.models import RULES, Finding
@@ -88,12 +89,16 @@ def run(
     select: Iterable[str] | None = None,
     ignore: Iterable[str] = (),
     changed: diffmod.ChangedLines | None = None,
+    exclude: Sequence[str] = (),
 ) -> Result:
     rules = set(select) if select else set(RULES)
     rules -= set(ignore)
     root = root.resolve()
 
-    py_files, dep_files = discover(paths)
+    found_py, found_deps = discover(paths)
+    # Excluded files are not checked, but still count as project modules below.
+    py_files = [p for p in found_py if not is_excluded(_rel_to(p, root), exclude)]
+    dep_files = [p for p in found_deps if not is_excluded(_rel_to(p, root), exclude)]
     result = Result()
     sources: list[SourceFile] = []
     for path in py_files:
@@ -114,7 +119,7 @@ def run(
         # Index the whole project, not just the checked paths: when pre-commit passes
         # only changed files, imports of the project's other modules must still resolve.
         if any(Path(p).resolve() == root for p in paths):
-            all_py, all_deps = py_files, dep_files
+            all_py, all_deps = found_py, found_deps
         else:
             all_py, all_deps = discover([root])
         checker = PackageChecker(build_index(root, all_py, all_deps), registry)
