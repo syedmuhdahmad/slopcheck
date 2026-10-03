@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1.1", "ruff>=0.16.9"]
+dev = ["pytest>=9.1.1", "ruff>=0.16.9", "coverage[toml]>=7.16"]
 
 [project.scripts]
 slopfence = "slopfence.cli:main"
@@ -56,6 +56,22 @@ packages = ["src/slopfence"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["slopfence"]
+branch = true
+# CI measures every test job (each Python version and OS) and combines the results.
+parallel = true
+relative_files = true
+
+[tool.coverage.paths]
+source = ["src/slopfence", "*/src/slopfence", "*\\src\\slopfence"]
+
+[tool.coverage.report]
+# Line and branch coverage was 94% when this was set; keep a small margin.
+fail_under = 90
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@overload"]
 
 [tool.ruff]
 # Deliberately sloppy project used by the GitHub Action test.

@@ -42,7 +42,7 @@ New here? Look for issues labelled [`good first issue`](https://github.com/syedm
 
 ### What happens to your pull request
 
-- The `ci` check must pass. It only passes when all of these pass: lint, tests on Linux, macOS and Windows, the package build (the same build and smoke test as a release), and the end-to-end tests of the GitHub Action and the pre-commit hook.
+- The `ci` check must pass. It only passes when all of these pass: lint, tests on Linux, macOS and Windows, the package build (the same build and smoke test as a release), the end-to-end tests of the GitHub Action and the pre-commit hook, and test coverage (line and branch coverage, combined over every Python version and OS, must stay at or above `fail_under` in `pyproject.toml`; the run summary shows a per-file table).
 - **CodeRabbit reviews every pull request** automatically and again after each push, and its findings must be fixed before merging. The required `CodeRabbit` check makes sure it has finished reviewing. It requests changes while it has open comments or a failing pre-merge check (a clear title, the linked issue fully addressed, and docstrings on at least 80% of the functions you touch), and approves once they are resolved. If you think a finding is wrong, reply to it: CodeRabbit answers, and a maintainer decides.
 - A maintainer merges it once the checks pass and review comments are addressed.
 - All review conversations must be resolved.
@@ -57,6 +57,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e '.[dev]'
 
 pytest                           # tests
+coverage run -m pytest && coverage combine && coverage report   # coverage
 ruff check . && ruff format --check .
 slopfence src tests              # slopfence must pass on its own code
 npx markdownlint-cli2 "**/*.md" "!.venv/**"
