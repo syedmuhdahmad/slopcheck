@@ -9,3 +9,9 @@ build/
 .ruff_cache/
 .slopfence-cache/
 .DS_Store
+
+# Coverage data and reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

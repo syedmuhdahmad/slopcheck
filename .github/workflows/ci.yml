@@ -53,7 +53,50 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
-      - run: pytest -q
+      - name: Run tests with coverage
+        run: coverage run -m pytest -q
+      # Each job measures its own Python version and OS; the coverage job combines them.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.os }}-${{ matrix.python-version }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  # Combined line and branch coverage of every test job: a table in the run summary,
+  # coverage.xml and an HTML report as artifacts, and a minimum (fail_under in
+  # pyproject.toml) so coverage can't silently drop.
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install 'coverage[toml]>=7.16'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          merge-multiple: true
+      - name: Combine and report
+        run: |
+          coverage combine
+          coverage xml
+          coverage html --skip-covered
+          coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+      - name: Coverage must stay above the minimum
+        run: coverage report
 
   # Builds the sdist and wheel exactly like release.yml, so packaging breaks on the
   # pull request instead of at release time.
@@ -114,7 +157,7 @@ jobs:
   # for pull requests from forks, whose token can't write security events.
   ci:
     if: always()
-    needs: [lint, test, package, action, pre-commit]
+    needs: [lint, test, coverage, package, action, pre-commit]
     runs-on: ubuntu-latest
     steps:
       - name: All checks passed
