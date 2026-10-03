@@ -12,7 +12,7 @@
 
 **A fast, deterministic quality gate for AI-assisted code.**
 
-slopfence finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs and leftover chat text) before it gets merged.
+slopfence finds the junk that AI coding assistants leave behind (hallucinated packages, tests that test nothing, placeholder stubs, duplicate helpers, swallowed errors and leftover chat text) before it gets merged.
 
 ![slopfence checking an AI-written billing service: it finds a dependency that doesn't exist on PyPI, a placeholder comment, leftover "Certainly!" chat text, and three tests that can't fail](https://raw.githubusercontent.com/syedmuhdahmad/slopfence/main/docs/demo.gif)
 
@@ -132,6 +132,14 @@ If your company index only **mirrors** PyPI, set `detect-private-index = false` 
 
 With `--check-imports`, an import isn't looked up when a declared dependency or a locked package provides it, even if the names differ and the package isn't installed where slopfence runs. For example, `import bs4` is covered by `beautifulsoup4`, `import dateutil` by `python-dateutil`, and `from google.cloud import storage` by `google-cloud-storage`. slopfence reads `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock` and `Pipfile`, so indirect dependencies count too (`import idna` when only `requests` is declared).
 
+### What the code-quality rules skip
+
+To keep false positives low, the newer rules are deliberately conservative:
+
+- **`SLOP011` stub functions** needs a docstring that promises work (it starts with a verb like *validate*, *fetch*, *send*, *calculate*) or admits it isn't done (*placeholder*, *TODO*, *for now*). The body must then return hardcoded data while ignoring every input, or return nothing although the return type promises a value. A placeholder docstring over a body that does nothing (`pass`, `...`, `return None`) is reported even without a return type. `.pyi` stub files are never checked. Abstract methods, `@overload`, properties, `Protocol`/ABC classes, `if TYPE_CHECKING:` blocks, documented hooks ("override this", "does nothing by default") and tests are skipped.
+- **`SLOP030` duplicate functions** ignores functions with fewer than 3 statements and test code. Parameter and variable names and docstrings don't matter; called functions, attributes and constants do. A full scan reports **identical** copies (every copy except the first). With `--diff`, functions you changed are also compared with the rest of the project and reported when they're **≥90% similar** to an existing function, because that's when an assistant re-writes a helper that already exists. Never reported: methods with the same name in different classes (plugins, drivers), functions defined twice in one file (under `if`/`try`), near-duplicate methods, and parallel families that differ only by swapped names, operators or constants (`md5_utf8`/`sha_utf8`, `polyadd`/`polysub`).
+- **`SLOP040` swallowed exceptions** only flags `except Exception`, `except BaseException` and bare `except:` whose body is just `pass` or `...`. A comment in the handler (`# best effort`), cleanup code (`__del__`, `__exit__`, `close()`, `atexit` handlers, `try: os.unlink(...)`, also in a loop), optional imports (`try: import ujson`), `contextlib.suppress`, tests and examples are skipped.
+
 ### GitHub Action
 
 ```yaml
@@ -231,12 +239,12 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopfen
 | `SLOP001` | Dependency (or, with `--check-imports`, import) of a package that doesn't exist on PyPI | 🔴 High | ✅ v0.1 (Python) |
 | `SLOP002` | Dependency that is very new or has suspiciously few downloads (slopsquatting risk) | 🔴 High | Planned |
 | `SLOP010` | Placeholder / stub comment (`In a real implementation…`, `Simplified for demo`) | 🟠 Medium | ✅ v0.1 |
-| `SLOP011` | Function that only returns `None`, `pass`, or hardcoded fake data | 🟠 Medium | Planned for v0.2 ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22)) |
+| `SLOP011` | Function whose docstring promises work ("Validate the token") but which only returns hardcoded data or nothing | 🟠 Medium | ✅ v0.2 |
 | `SLOP020` | Test that only asserts on its own mocks | 🔴 High | ✅ v0.1 |
 | `SLOP021` | Test with no meaningful assertion (e.g. only `assert True`) | 🟠 Medium | ✅ v0.1 |
 | `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High | ✅ v0.1 |
-| `SLOP030` | Near-duplicate function elsewhere in the codebase | 🟠 Medium | Planned for v0.2 ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11)) |
-| `SLOP040` | `except Exception` that silently swallows errors | 🟡 Low | Planned for v0.2 ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21)) |
+| `SLOP030` | Function identical to another one in the project (names and docstrings ignored); with `--diff`, also new functions ≥90% similar to existing ones | 🟠 Medium | ✅ v0.2 |
+| `SLOP040` | `except Exception` (or bare `except`) that silently swallows every error | 🟡 Low | ✅ v0.2 |
 | `SLOP050` | Comment that only restates the code | 🟡 Low | Planned for v0.2 ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23)) |
 | `SLOP051` | Leftover chat text in code (`Certainly! Here's…`) | 🟠 Medium | ✅ v0.1 |
 
@@ -314,7 +322,7 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 #### Planned features
 
 - [x] Config file: `[tool.slopfence]` in `pyproject.toml` ([#10](https://github.com/syedmuhdahmad/slopfence/issues/10))
-- [ ] `SLOP030` near-duplicate functions ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
+- [x] `SLOP030` near-duplicate functions ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
 - [ ] Parallel processing for large repos ([#12](https://github.com/syedmuhdahmad/slopfence/issues/12))
 
 #### Reliability
@@ -332,8 +340,8 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 
 #### New rules
 
-- [ ] `SLOP040` `except Exception` that silently swallows errors ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
-- [ ] `SLOP011` stub functions that only `pass` or return fake data ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
+- [x] `SLOP040` `except Exception` that silently swallows errors ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
+- [x] `SLOP011` stub functions that only `pass` or return fake data ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
 - [ ] `SLOP050` comments that only restate the code ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23))
 
 #### Project

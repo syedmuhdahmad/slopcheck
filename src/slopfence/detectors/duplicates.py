@@ -1,0 +1,318 @@
+"""SLOP030: near-duplicate functions across the project.
+
+Each function is normalized (docstring dropped, parameters and local variables
+renamed by position) and turned into a token sequence. Identical sequences are
+duplicates. For near-duplicates, each function gets a small MinHash sketch of its
+token 4-grams; functions sharing at least ``MIN_SHARED`` sketch values are compared
+with difflib and reported above ``SIMILARITY``. Functions with fewer than ``MIN_STATEMENTS``
+statements are ignored: short helpers look alike by nature.
+
+Measured on 122,000 functions from the stdlib and 225 packages, these are not
+reported, because they are almost always deliberate:
+
+* methods with the same name in different classes (plugins, drivers, platform
+  variants: ``seek`` in two image formats);
+* parallel families with the same structure and different values: every
+  difference is a same-length substitution (``polyadd`` and ``polysub``,
+  ``read_uint2`` and ``read_uint8``), or at most ``MIRROR_TOKENS`` tokens differ
+  (``md5_utf8`` and ``sha_utf8``). A copy someone edited has insertions or
+  deletions instead;
+* functions with the same name in the same file (alternatives under ``if``/``try``);
+* near-duplicate methods. Methods are only reported when identical; near-duplicates
+  are reported for standalone functions, the helpers AI assistants re-create.
+
+Even then, near-duplicates in established code are mostly deliberate twins
+(``nanargmin``/``nanargmax``, ``getinnerframes``/``getouterframes``), so a full scan
+reports identical copies only. With ``--diff``, functions you changed are also
+checked for near-duplicates of existing code: that's when an assistant re-writes a
+helper that already exists.
+"""
+
+from __future__ import annotations
+
+import ast
+import difflib
+import itertools
+import zlib
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+
+from slopfence.diff import ChangedLines, touches
+from slopfence.models import Finding
+from slopfence.source import SourceFile
+
+MIN_STATEMENTS = 3
+SIMILARITY = 0.9
+# Sketch values shared by more functions than this are boilerplate; skipping them
+# keeps the comparison count low on big projects.
+MAX_GROUP = 200
+SKETCH_SIZE = 12
+# Functions 90% alike share most of their sketch; one shared value is often chance.
+MIN_SHARED = 3
+NGRAM = 4
+# Near-duplicates differing in this many tokens or fewer are parallel functions.
+MIRROR_TOKENS = 2
+# Longer functions are generated code; difflib is quadratic, so they're only checked
+# for identical copies.
+MAX_NEAR_TOKENS = 5000
+
+FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+@dataclass
+class Function:
+    name: str
+    path: str
+    line: int
+    end_line: int
+    tokens: tuple[str, ...]
+    # The class a method is defined in (None for functions).
+    owner: str | None = None
+
+
+def _statement_count(func: FunctionNode) -> int:
+    """Statements inside the function, nested ones included."""
+    return sum(isinstance(n, ast.stmt) for n in ast.walk(func)) - 1
+
+
+def _local_names(func: FunctionNode) -> set[str]:
+    """Parameters and every name the function assigns or deletes."""
+    args = func.args
+    params = [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]
+    names = {a.arg for a in params if a}
+    for node in ast.walk(func):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            names.add(node.id)
+    return names
+
+
+def _body_without_docstring(func: FunctionNode) -> list[ast.stmt]:
+    """The function body without its docstring, if it has one."""
+    body = func.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    return body
+
+
+def _tokens(node: ast.AST, rename: dict[str, str], local: set[str]) -> Iterator[str]:
+    """A flat token sequence of node types and the values that matter.
+
+    Depth-first, so each statement's tokens stay together and an edit changes one
+    stretch only. Parameters and locals become v0, v1... in order of appearance,
+    so renaming them doesn't change the sequence.
+    """
+    yield type(node).__name__
+    if isinstance(node, (ast.Name, ast.arg)):
+        name = node.id if isinstance(node, ast.Name) else node.arg
+        yield rename.setdefault(name, f"v{len(rename)}") if name in local else name
+    elif isinstance(node, ast.Attribute):
+        yield node.attr
+    elif isinstance(node, ast.Constant):
+        # The full value: constants that differ anywhere (long SQL, URLs) must never
+        # make two functions look identical.
+        yield repr(node.value)
+    for child in ast.iter_child_nodes(node):
+        if not isinstance(child, (ast.Load, ast.Store, ast.Del)):
+            yield from _tokens(child, rename, local)
+
+
+def _functions(
+    node: ast.AST, owner: str | None = None
+) -> Iterator[tuple[FunctionNode, str | None]]:
+    """Every function and method under ``node``, with the class it's defined in."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield child, owner
+            yield from _functions(child, None)
+        elif isinstance(child, ast.ClassDef):
+            yield from _functions(child, child.name)
+        else:
+            yield from _functions(child, owner)
+
+
+def index_functions(sources: Iterable[SourceFile]) -> list[Function]:
+    """Normalized fingerprints of every non-trivial function outside test code."""
+    found = []
+    for src in sources:
+        if src.is_test_file:
+            continue
+        for func, owner in _functions(src.tree):
+            if _statement_count(func) < MIN_STATEMENTS:
+                continue
+            local, rename = _local_names(func), {}
+            tokens = tuple(_tokens(func.args, rename, local))
+            for stmt in _body_without_docstring(func):
+                tokens += tuple(_tokens(stmt, rename, local))
+            found.append(
+                Function(
+                    name=func.name,
+                    path=src.rel,
+                    line=func.lineno,
+                    end_line=func.end_lineno or func.lineno,
+                    tokens=tokens,
+                    owner=owner,
+                )
+            )
+    return found
+
+
+def _similarity(a: Function, b: Function) -> float:
+    """Similarity of two token sequences (1.0 means identical; 0.0 for mirror pairs)."""
+    if a.tokens == b.tokens:
+        return 1.0
+    matcher = difflib.SequenceMatcher(None, a.tokens, b.tokens, autojunk=False)
+    if matcher.real_quick_ratio() < SIMILARITY or matcher.quick_ratio() < SIMILARITY:
+        return 0.0
+    ratio = matcher.ratio()
+    if ratio >= SIMILARITY:
+        edits = [op for op in matcher.get_opcodes() if op[0] != "equal"]
+        changed = sum(max(i2 - i1, j2 - j1) for _, i1, i2, j1, j2 in edits)
+        substitutions_only = all(
+            tag == "replace" and i2 - i1 == j2 - j1 for tag, i1, i2, j1, j2 in edits
+        )
+        if changed <= MIRROR_TOKENS or substitutions_only:
+            return 0.0  # a deliberate parallel function, not an edited copy
+    return ratio
+
+
+def _alternatives(a: Function, b: Function) -> bool:
+    """Same name and deliberately alike: methods of one interface in different classes
+    (plugins, drivers), or alternative definitions in one file (under ``if``/``try``)."""
+    if a.name != b.name:
+        return False
+    if a.path == b.path and a.owner == b.owner:
+        return True
+    return bool(a.owner and b.owner)
+
+
+def _sketch(tokens: tuple[str, ...]) -> list[int]:
+    """Bottom-k MinHash of the token 4-grams, with a hash that's stable across runs."""
+    grams = {
+        zlib.crc32("\x1f".join(tokens[i : i + NGRAM]).encode())
+        for i in range(max(1, len(tokens) - NGRAM + 1))
+    }
+    return sorted(grams)[:SKETCH_SIZE]
+
+
+def _nested(a: Function, b: Function) -> bool:
+    """Whether one function is defined inside the other."""
+    if a.path != b.path:
+        return False
+    return (a.line <= b.line and b.end_line <= a.end_line) or (
+        b.line <= a.line and a.end_line <= b.end_line
+    )
+
+
+def find_duplicates(
+    functions: list[Function], near_for: set[int] | None = None
+) -> dict[int, list[tuple[int, float]]]:
+    """For each function (by index), the other functions it duplicates, with similarity.
+
+    Identical copies are always found. Near-duplicates are only looked for in pairs
+    with a function in ``near_for`` (all functions if None).
+    """
+    matches: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    buckets: dict[int, list[int]] = defaultdict(list)
+    for i, func in enumerate(functions if near_for is None or near_for else ()):
+        if func.owner is None and len(func.tokens) <= MAX_NEAR_TOKENS:
+            for value in _sketch(func.tokens):
+                buckets[value].append(i)
+    shared: Counter[tuple[int, int]] = Counter()
+    for members in buckets.values():
+        if 1 < len(members) <= MAX_GROUP:
+            shared.update((i, j) for x, i in enumerate(members) for j in members[x + 1 :])
+    candidates = sorted(
+        (i, j)
+        for (i, j), count in shared.items()
+        if count >= MIN_SHARED and (near_for is None or i in near_for or j in near_for)
+    )
+    for i, j in candidates:
+        a_func, b_func = functions[i], functions[j]
+        if _nested(a_func, b_func) or _alternatives(a_func, b_func):
+            continue  # nested: the outer function contains the inner one's tokens
+        if a_func.owner or b_func.owner:
+            continue  # methods: only identical copies are reported (below)
+        a, b = len(functions[i].tokens), len(functions[j].tokens)
+        if 2 * min(a, b) / (a + b) < SIMILARITY:
+            continue  # sizes too different to reach the threshold
+        score = _similarity(functions[i], functions[j])
+        if score >= SIMILARITY:
+            matches[i].append((j, score))
+            matches[j].append((i, score))
+    # Exact duplicates, also inside boilerplate buckets. Linking each
+    # copy to the first two is enough to report it, and stays linear in the group size.
+    exact: dict[tuple[str, ...], list[int]] = defaultdict(list)
+    for i, func in enumerate(functions):
+        exact[func.tokens].append(i)
+    for members in exact.values():
+        for i in members:
+            others = (
+                m
+                for m in members
+                if m != i
+                and not _nested(functions[i], functions[m])
+                and not _alternatives(functions[i], functions[m])
+            )
+            for j in itertools.islice(others, 2):
+                if all(other != j for other, _ in matches[i]):
+                    matches[i].append((j, 1.0))
+    return matches
+
+
+def check_duplicates(
+    sources: list[SourceFile],
+    checked: set[str],
+    changed: ChangedLines | None = None,
+) -> Iterator[Finding]:
+    """SLOP030 for functions in ``checked`` files, compared with the whole project.
+
+    In a full scan, identical copies are reported, each except the first (by path
+    and line) pointing at the first. With ``changed``, every changed function that is
+    identical or near-identical to another one is reported, pointing at an unchanged
+    copy where possible, so a new copy is caught even when it sorts first.
+    """
+    functions = index_functions(sources)
+
+    def order(k: int) -> tuple[str, int]:
+        """Sort key: where the function is."""
+        return functions[k].path, functions[k].line
+
+    def is_changed(k: int) -> bool:
+        """Whether the function overlaps lines changed in the diff."""
+        f = functions[k]
+        return changed is not None and touches(changed, f.path, f.line, f.end_line)
+
+    # Near-duplicates are only reported for changed functions (see the module docstring).
+    near_for = {k for k in range(len(functions)) if is_changed(k)}
+    for i, others in find_duplicates(functions, near_for).items():
+        func = functions[i]
+        if changed is None:
+            others = [(j, score) for j, score in others if score >= 1.0]
+        if func.path not in checked or not others:
+            continue
+        if changed is not None:
+            if not is_changed(i):
+                continue
+            others = sorted(others, key=lambda m: (is_changed(m[0]), order(m[0])))
+        else:
+            if all(order(i) < order(j) for j, _ in others):
+                continue  # the first copy: the others point here
+            others = sorted(others, key=lambda m: order(m[0]))
+        j, score = others[0]
+        other = functions[j]
+        how = "identical to" if score >= 1.0 else f"{int(score * 100)}% similar to"
+        yield Finding(
+            "SLOP030",
+            func.path,
+            func.line,
+            1,
+            f"Function '{func.name}' is {how} '{other.name}' in {other.path}:{other.line}; "
+            "reuse it instead of keeping two copies",
+            end_line=func.end_line,
+        )
