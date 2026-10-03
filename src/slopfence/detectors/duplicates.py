@@ -114,10 +114,9 @@ def _tokens(node: ast.AST, rename: dict[str, str], local: set[str]) -> Iterator[
     elif isinstance(node, ast.Attribute):
         yield node.attr
     elif isinstance(node, ast.Constant):
-        text = repr(node.value)
-        # Long strings (SQL, URLs) get a hash suffix: short tokens, but two constants
-        # that only differ late never look identical.
-        yield text if len(text) <= 40 else f"{text[:24]}#{zlib.crc32(text.encode()):08x}"
+        # The full value: constants that differ anywhere (long SQL, URLs) must never
+        # make two functions look identical.
+        yield repr(node.value)
     for child in ast.iter_child_nodes(node):
         if not isinstance(child, (ast.Load, ast.Store, ast.Del)):
             yield from _tokens(child, rename, local)
