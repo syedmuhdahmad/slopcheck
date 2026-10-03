@@ -7,26 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-03
+
+Three new rules, private package support, and safer defaults for private code.
+
+### Upgrade notes
+
+- **Imports are no longer looked up on PyPI by default** ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34)). Dependency files (`requirements*.txt`, `pyproject.toml`) are still checked as before. To also check imports in source code, as v0.1 did, pass `--check-imports` or set `check-imports = true` in `[tool.slopfence]`. See "What slopfence sends over the network" in the README.
+- **If pip or uv uses a private index** (`PIP_INDEX_URL`, `pip.conf`, `uv.toml`…), `SLOP001` now makes no PyPI lookups, and the report says so in a note ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17)). If that index only mirrors PyPI, set `detect-private-index = false`.
+- Three new rules (`SLOP011`, `SLOP030`, `SLOP040`) are on by default. To roll them out gradually, use `ignore = ["SLOP030"]`, `--diff`, or `--fail-on medium` (SLOP040 is low severity).
+
 ### Added
 
-- `SLOP011` stub functions: a docstring that promises work ("Validate the token") over a body that returns hardcoded data or nothing ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
-- `SLOP030` duplicate functions: identical functions across the project, ignoring names and docstrings. With `--diff`, changed functions are also reported when they're ≥90% similar to an existing one ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
-- `SLOP040` swallowed exceptions: `except Exception: pass` and bare `except: pass` in application code ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
-- Demo GIF in the README, recorded with VHS from `docs/demo/demo.tape` ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
-- `known-packages` config and `--known-packages` option: private packages that `SLOP001` accepts without a PyPI lookup, with glob support ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
-- `fail-on` config and `--fail-on` option to choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
-- `check-imports` config and `--check-imports` / `--no-check-imports` options ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
-- `SLOP001` recognises project-wide private indexes in `pyproject.toml` (`[[tool.poetry.source]]`, `[[tool.uv.index]]`, `[tool.uv] index-url` / `extra-index-url`): dependencies in that file are no longer reported or sent to PyPI ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
-- `SLOP001` detects private package indexes in the environment: `PIP_INDEX_URL` and the other pip and uv variables, `pip.conf` / `pip.ini`, `uv.toml`, and Pipfile sources. Then it makes no PyPI lookups and adds a note to the report. New `detect-private-index` config and `--detect-private-index` / `--no-detect-private-index` options for indexes that only mirror PyPI ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
-- `SLOP001` import checks know which package provides an import even when the names differ and the package isn't installed (`bs4` from `beautifulsoup4`, `google.cloud` from `google-cloud-storage`), and read `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock` and `Pipfile` for indirect dependencies ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
-- Reports can carry notes, e.g. why `SLOP001` skipped lookups: text output prints them, JSON has a `notes` list, and SARIF has `note` tool notifications
-- `strict` config and `--strict` option: unparseable Python files exit with code 2. Parse errors are now also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
+- **New rules:**
+  - `SLOP011` stub functions: a docstring that promises work ("Validate the token") over a body that returns hardcoded data or nothing ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
+  - `SLOP030` duplicate functions: identical functions across the project, ignoring names and docstrings. With `--diff`, changed functions are also reported when they're ≥90% similar to an existing one ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
+  - `SLOP040` swallowed exceptions: `except Exception: pass` and bare `except: pass` in application code (low severity) ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
+- **Private packages and indexes:**
+  - `known-packages` config and `--known-packages` option: private packages that `SLOP001` accepts without a PyPI lookup, with glob support ([#15](https://github.com/syedmuhdahmad/slopfence/issues/15))
+  - Private indexes in the environment are detected: `PIP_INDEX_URL` and the other pip and uv variables, `pip.conf` / `pip.ini`, `uv.toml`, and Pipfile sources. Then `SLOP001` makes no PyPI lookups. New `detect-private-index` config and `--detect-private-index` / `--no-detect-private-index` options ([#17](https://github.com/syedmuhdahmad/slopfence/issues/17))
+  - Project-wide private indexes in `pyproject.toml` are detected (`[[tool.poetry.source]]`, `[[tool.uv.index]]`, `[tool.uv]` and `[tool.uv.pip]` `index-url` / `extra-index-url`, `[[tool.pdm.source]]`): that file's dependencies are neither reported nor sent to PyPI ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+  - Index URLs are matched by host, never printed (they can contain credentials), and never treated as public just because they contain "pypi.org"
+- **Better import checks:** `SLOP001` knows which package provides an import even when the names differ and the package isn't installed (`bs4` from `beautifulsoup4`, `google.cloud` from `google-cloud-storage`), and reads `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock` and `Pipfile` for indirect dependencies ([#16](https://github.com/syedmuhdahmad/slopfence/issues/16))
+- **Options:**
+  - `check-imports` config and `--check-imports` / `--no-check-imports` ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+  - `fail-on` config and `--fail-on`: choose which severities fail the run ([#18](https://github.com/syedmuhdahmad/slopfence/issues/18))
+  - `strict` config and `--strict` / `--no-strict`: unparseable Python files exit with code 2. Parse errors are also reported in SARIF as tool notifications, and JSON/SARIF use project-relative paths for them ([#19](https://github.com/syedmuhdahmad/slopfence/issues/19))
+- **Reports:** notes, e.g. why `SLOP001` skipped lookups. Text output prints them, JSON has a `notes` list, and SARIF has `note` tool notifications
+- **Docs:** demo GIF in the README, recorded with VHS from `docs/demo/demo.tape` ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24)), plus the slopfence logo
 
 ### Changed
 
-- **Privacy:** `SLOP001` no longer sends import names from your source code to PyPI by default, because they can reveal private package names. Dependency files are still checked. Use `--check-imports` or `check-imports = true` to also look up imports. The README explains exactly what is sent ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
-- The source distribution only contains the package, tests and docs needed to build it (about 40 KB instead of 410 KB) ([#35](https://github.com/syedmuhdahmad/slopfence/issues/35))
-- README no longer claims duplicate-helper detection, which isn't built yet ([#36](https://github.com/syedmuhdahmad/slopfence/issues/36))
+- **Privacy:** `SLOP001` no longer sends import names from your source code to PyPI by default (see the upgrade notes). The README and `SECURITY.md` explain exactly what is sent ([#34](https://github.com/syedmuhdahmad/slopfence/issues/34))
+- The source distribution only contains the package, tests and the files needed to build it (about 40 KB instead of 410 KB) ([#35](https://github.com/syedmuhdahmad/slopfence/issues/35))
 - Colour output: rule IDs are coloured by severity, locations are dimmed, and the summary counts are coloured. Plain output (`--no-color`, pipes, files) is unchanged
 
 ### Fixed
@@ -68,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community health files: Code of Conduct, Contributing guide, Security policy, Support, Governance
 - Issue templates, pull request template, CODEOWNERS, Dependabot and CI
 
-[Unreleased]: https://github.com/syedmuhdahmad/slopfence/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/syedmuhdahmad/slopfence/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/syedmuhdahmad/slopfence/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/syedmuhdahmad/slopfence/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/syedmuhdahmad/slopfence/releases/tag/v0.1.0

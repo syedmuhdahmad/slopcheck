@@ -16,7 +16,7 @@ slopfence finds the junk that AI coding assistants leave behind (hallucinated pa
 
 ![slopfence checking an AI-written billing service: it finds a dependency that doesn't exist on PyPI, a placeholder comment, leftover "Certainly!" chat text, and three tests that can't fail](https://raw.githubusercontent.com/syedmuhdahmad/slopfence/main/docs/demo.gif)
 
-> 🚧 **Status: alpha (v0.1, Python only).** The first detectors work and are tested against 20,000+ files of real-world code for false positives. Expect rough edges. Feedback is very welcome. See [Contributing](#contributing).
+> 🚧 **Status: alpha (v0.2, Python only).** Nine detectors work, each tuned against 20,000+ files of real-world code for false positives. Expect rough edges. Feedback is very welcome. See [Contributing](#contributing).
 
 ---
 
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: syedmuhdahmad/slopfence@v0.1.1
+      - uses: syedmuhdahmad/slopfence@v0.2.0
 ```
 
 On pull requests it automatically checks only the changed lines (set `diff: none` to check everything, or `diff: <ref>` for a specific ref). To show findings inline on the pull request, set `sarif-file: slopfence.sarif` and upload it with `github/codeql-action/upload-sarif` (needs `security-events: write`).
@@ -166,7 +166,7 @@ On pull requests it automatically checks only the changed lines (set `diff: none
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/syedmuhdahmad/slopfence
-    rev: v0.1.1
+    rev: v0.2.0
     hooks:
       - id: slopfence
 ```
@@ -245,7 +245,7 @@ AI reviewers are smart but nondeterministic and cost money on every run. slopfen
 | `SLOP022` | Test wrapped in `try/except` so it can never fail | 🔴 High | ✅ v0.1 |
 | `SLOP030` | Function identical to another one in the project (names and docstrings ignored); with `--diff`, also new functions ≥90% similar to existing ones | 🟠 Medium | ✅ v0.2 |
 | `SLOP040` | `except Exception` (or bare `except`) that silently swallows every error | 🟡 Low | ✅ v0.2 |
-| `SLOP050` | Comment that only restates the code | 🟡 Low | Planned for v0.2 ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23)) |
+| `SLOP050` | Comment that only restates the code | 🟡 Low | Planned ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23)) |
 | `SLOP051` | Leftover chat text in code (`Certainly! Here's…`) | 🟠 Medium | ✅ v0.1 |
 
 ## Example output
@@ -284,7 +284,7 @@ tests/test_user.py
                                   └───────────────────┘
 ```
 
-- **Parser:** v0.1 uses Python's built-in `ast` and `tokenize` (no dependencies). **tree-sitter** is planned so new languages can be added without rewriting the detectors.
+- **Parser:** slopfence uses Python's built-in `ast` and `tokenize` (no dependencies). **tree-sitter** is planned so new languages can be added without rewriting the detectors.
 - **Registry lookups** are cached locally (`~/.cache/slopfence`) to stay fast and avoid rate limits. If PyPI can't be reached, nothing is flagged: an unknown answer is never treated as "missing". Import names are only sent with `--check-imports` (see [What slopfence sends over the network](#what-slopfence-sends-over-the-network)).
 - **Optional LLM mode** (planned, not built yet) would send only the unclear cases for a second opinion. Never required.
 
@@ -315,15 +315,14 @@ tests/test_user.py
 - [x] GitHub Action and pre-commit hook
 - [x] Publish to PyPI
 
-### v0.2
+### v0.2: private code, new rules ([released](https://github.com/syedmuhdahmad/slopfence/releases/tag/v0.2.0))
 
-Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/milestone/2) and on the [roadmap board](https://github.com/users/syedmuhdahmad/projects/1).
+Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/milestone/2). Upcoming work is on the [roadmap board](https://github.com/users/syedmuhdahmad/projects/1).
 
 #### Planned features
 
 - [x] Config file: `[tool.slopfence]` in `pyproject.toml` ([#10](https://github.com/syedmuhdahmad/slopfence/issues/10))
 - [x] `SLOP030` near-duplicate functions ([#11](https://github.com/syedmuhdahmad/slopfence/issues/11))
-- [ ] Parallel processing for large repos ([#12](https://github.com/syedmuhdahmad/slopfence/issues/12))
 
 #### Reliability
 
@@ -342,15 +341,17 @@ Tracked in the [v0.2.0 milestone](https://github.com/syedmuhdahmad/slopfence/mil
 
 - [x] `SLOP040` `except Exception` that silently swallows errors ([#21](https://github.com/syedmuhdahmad/slopfence/issues/21))
 - [x] `SLOP011` stub functions that only `pass` or return fake data ([#22](https://github.com/syedmuhdahmad/slopfence/issues/22))
-- [ ] `SLOP050` comments that only restate the code ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23))
 
 #### Project
 
 - [x] Demo GIF in the README ([#24](https://github.com/syedmuhdahmad/slopfence/issues/24))
-- [ ] Release v0.2.0 ([#25](https://github.com/syedmuhdahmad/slopfence/issues/25))
+- [x] Test coverage measured in CI ([#48](https://github.com/syedmuhdahmad/slopfence/issues/48))
+- [x] Release v0.2.0 ([#25](https://github.com/syedmuhdahmad/slopfence/issues/25))
 
 ### Later
 
+- [ ] `SLOP050` comments that only restate the code ([#23](https://github.com/syedmuhdahmad/slopfence/issues/23))
+- [ ] Parallel processing for large repos ([#12](https://github.com/syedmuhdahmad/slopfence/issues/12))
 - [ ] JavaScript / TypeScript (npm registry)
 - [ ] Slopsquatting risk scoring (`SLOP002`)
 - [ ] VS Code extension
